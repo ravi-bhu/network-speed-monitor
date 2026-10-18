@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure x64
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+      - name: Build Debug
+        run: cmake --build build --config Debug
+      - name: Build Release
+        run: cmake --build build --config Release
+      - name: Unit tests
+        run: build\tests\Release\nsm_tests.exe -tse="integration"
+      - name: Integration tests
+        continue-on-error: false
+        run: build\tests\Release\nsm_tests.exe -ts="integration"
+      - name: Configure ARM64
+        run: cmake -S . -B build-arm64 -G "Visual Studio 17 2022" -A ARM64
+      - name: Build ARM64 Release (no tests run)
+        run: cmake --build build-arm64 --config Release
