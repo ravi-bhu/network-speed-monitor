@@ -23,6 +23,12 @@ struct OverlayContent {
 // Physical-pixel sizes at `dpi` for the widest plausible readout.
 OverlaySizes MeasureOverlay(unsigned dpi, bool letters);
 
+// The label that starts a readout line: an arrow, or the localized U:/D: label, plus a space.
+std::wstring LinePrefix(bool upload, bool letters);
+
+// Width in DIPs of one readout line laid out in the overlay font (exposed for tests).
+float LineWidthDip(const std::wstring& line);
+
 // Draws the readout into a DC render target already bound to a 32bpp premultiplied DIB of `size`.
 void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c);
 

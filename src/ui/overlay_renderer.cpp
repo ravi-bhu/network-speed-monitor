@@ -9,6 +9,8 @@
 #include <vector>
 
 #include "core/units.h"
+#include "platform/strings.h"
+#include "resource.h"
 
 namespace nsm {
 namespace {
@@ -88,21 +90,30 @@ const Text& GetText() {
 }
 
 std::wstring Prefix(bool upload, bool letters) {
-    if (letters) return upload ? L"U: " : L"D: ";
+    if (letters) return LoadStr(upload ? IDS_LABEL_UP : IDS_LABEL_DOWN) + L" ";
     return upload ? L"↑ " : L"↓ ";
 }
 
+float WidthOf(const Text& t, const std::wstring& s) {
+    auto layout = MakeLayout(t, s, 1000.0f);
+    DWRITE_TEXT_METRICS m{};
+    return layout && SUCCEEDED(layout->GetMetrics(&m)) ? m.widthIncludingTrailingWhitespace : 0.0f;
+}
+
 float WidestTextWidth(const Text& t, bool letters) {
-    // Widest plausible values: three digits with each unit prefix (tabular figures, so 8 is representative).
-    static const wchar_t* const kValues[] = {L"888 KB/s", L"888 MB/s", L"888 GB/s",
-                                             L"888 Kbps", L"888 Mbps", L"888 Gbps"};
+    // Every shape FormatSpeed can print, in both unit modes and at every unit scale:
+    // "8.88 X", "88.8 X" and "888 X" (tabular figures, so 8 stands for any digit).
+    std::vector<std::wstring> values{LoadStr(IDS_NO_VALUE)};
+    for (UnitMode mode : {UnitMode::Bytes, UnitMode::Bits}) {
+        const double perByte = mode == UnitMode::Bits ? 8.0 : 1.0;
+        for (double scale = 1; scale <= 1e9; scale *= 1000) {
+            for (double v : {8.88, 88.8, 888.0}) values.push_back(FormatSpeed(v * scale / perByte, mode));
+        }
+    }
     float widest = 0;
     for (bool upload : {true, false}) {
-        for (const wchar_t* v : kValues) {
-            auto layout = MakeLayout(t, Prefix(upload, letters) + v, 1000.0f);
-            DWRITE_TEXT_METRICS m{};
-            if (layout && SUCCEEDED(layout->GetMetrics(&m))) widest = std::max(widest, m.widthIncludingTrailingWhitespace);
-        }
+        const std::wstring prefix = Prefix(upload, letters);
+        for (const std::wstring& v : values) widest = std::max(widest, WidthOf(t, prefix + v));
     }
     return std::ceil(widest) + 2 * kTextPad;
 }
@@ -133,6 +144,13 @@ void DrawSeries(ID2D1RenderTarget* rt, const std::vector<double>& values, double
 }
 
 }  // namespace
+
+std::wstring LinePrefix(bool upload, bool letters) { return Prefix(upload, letters); }
+
+float LineWidthDip(const std::wstring& line) {
+    const Text& t = GetText();
+    return t.ok ? WidthOf(t, line) : 0.0f;
+}
 
 OverlaySizes MeasureOverlay(unsigned dpi, bool letters) {
     const Text& t = GetText();
@@ -176,8 +194,8 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) 
         // Snap the first baseline box to a whole device pixel so text stays crisp.
         const float y0 = std::round((height - 2 * t.lineHeight) / 2 * scale) / scale;
         for (bool upload : {true, false}) {
-            std::wstring value = L"—";
-            if (c.speed) value = FormatSpeed(upload ? c.speed->tx : c.speed->rx, c.units);
+            const std::wstring value =
+                c.speed ? FormatSpeed(upload ? c.speed->tx : c.speed->rx, c.units) : LoadStr(IDS_NO_VALUE);
             const std::wstring prefix = Prefix(upload, c.letters);
             auto layout = MakeLayout(t, prefix + value, textWidth);
             if (!layout) continue;

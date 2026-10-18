@@ -5,7 +5,10 @@
 #include <cstdint>
 
 #include "core/speed_history.h"
+#include "core/units.h"
 #include "doctest.h"
+#include "platform/strings.h"
+#include "resource.h"
 #include "ui/overlay_renderer.h"
 
 using namespace nsm;
@@ -19,6 +22,36 @@ TEST_CASE("MeasureOverlay: graph adds width, sizes are positive" * doctest::test
         CHECK(s.height >= 28);                        // at least the graph height
         CHECK(s.height <= 40);                        // fits a 100% Win10 taskbar
     }
+}
+
+TEST_CASE("MeasureOverlay leaves room for every formatted value" * doctest::test_suite("integration")) {
+    // The text block keeps 1 DIP of padding on each side; at 96 DPI one px == one DIP.
+    for (bool letters : {false, true}) {
+        const int room = MeasureOverlay(96, letters).textOnlyWidth - 2;
+        for (bool upload : {true, false}) {
+            const std::wstring prefix = LinePrefix(upload, letters);
+            CAPTURE(letters);
+            CAPTURE(upload);
+            CHECK(LineWidthDip(prefix + FormatSpeed(11.1e6, UnitMode::Bits)) <= room);  // "88.8 Mbps"
+            for (UnitMode mode : {UnitMode::Bytes, UnitMode::Bits}) {
+                const double perByte = mode == UnitMode::Bits ? 8.0 : 1.0;
+                for (double scale = 1; scale <= 1e9; scale *= 1000) {
+                    for (double v : {8.88, 88.8, 888.0, 999.0}) {
+                        CAPTURE(v);
+                        CAPTURE(scale);
+                        CHECK(LineWidthDip(prefix + FormatSpeed(v * scale / perByte, mode)) <= room);
+                    }
+                }
+            }
+        }
+    }
+}
+
+TEST_CASE("Letter labels are loaded from the STRINGTABLE" * doctest::test_suite("integration")) {
+    CHECK(LinePrefix(true, true) == LoadStr(IDS_LABEL_UP) + L" ");
+    CHECK(LinePrefix(false, true) == LoadStr(IDS_LABEL_DOWN) + L" ");
+    CHECK(LinePrefix(true, false) == L"↑ ");
+    CHECK(LinePrefix(false, false) == L"↓ ");
 }
 
 TEST_CASE("MeasureOverlay scales with DPI" * doctest::test_suite("integration")) {

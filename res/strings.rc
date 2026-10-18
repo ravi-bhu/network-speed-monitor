@@ -5,4 +5,7 @@
 STRINGTABLE
 BEGIN
     IDS_APP_NAME "Network Speed Monitor"
+    IDS_LABEL_UP "U:"
+    IDS_LABEL_DOWN "D:"
+    IDS_NO_VALUE "—"
 END
