@@ -1,0 +1,76 @@
+#include "core/overlay_layout.h"
+
+#include <algorithm>
+
+namespace nsm {
+
+namespace {
+
+// Same rounding as Win32 MulDiv: round half away from zero.
+int MulDiv(int number, int numerator, int denominator) {
+    long long prod = static_cast<long long>(number) * numerator;
+    long long half = denominator / 2;
+    long long r = (prod >= 0) ? (prod + half) / denominator : (prod - half) / denominator;
+    return static_cast<int>(r);
+}
+
+bool IsHorizontal(Edge e) { return e == Edge::Bottom || e == Edge::Top; }
+
+}  // namespace
+
+OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, bool wantGraph) {
+    OverlayPlacement p;
+    const int margin = MulDiv(4, static_cast<int>(g.dpi), 96);
+
+    if (IsHorizontal(g.edge)) {
+        const int right = g.tray.left - margin;
+        const int start = g.occupied.Empty() ? g.taskbar.left : g.occupied.right + margin;
+        const int freeSpace = right - start;
+        int width;
+        if (wantGraph && s.fullWidth <= freeSpace) {
+            width = s.fullWidth;
+            p.showGraph = true;
+        } else if (s.textOnlyWidth <= freeSpace) {
+            width = s.textOnlyWidth;
+        } else {
+            return p;
+        }
+        const int top = g.taskbar.top + (g.taskbar.Height() - s.height) / 2;
+        p.visible = true;
+        p.rect = {right - width, top, right, top + s.height};
+        return p;
+    }
+
+    const int width = g.taskbar.Width() - 2 * margin;
+    if (width < s.textOnlyWidth) return p;
+    const bool graph = wantGraph && width >= s.fullWidth;
+    const int height = graph ? 2 * s.height : s.height;
+    const int bottom = g.tray.top - margin;
+    const int top = bottom - height;
+    if (!g.occupied.Empty() && top < g.occupied.bottom + margin) return p;
+    p.visible = true;
+    p.showGraph = graph;
+    p.rect = {g.taskbar.left + margin, top, g.taskbar.right - margin, bottom};
+    return p;
+}
+
+bool IsTaskbarShown(const Rect& taskbar, const Rect& monitor, Edge edge) {
+    int thickness, visible;
+    if (IsHorizontal(edge)) {
+        thickness = taskbar.Height();
+        visible = std::min(taskbar.bottom, monitor.bottom) - std::max(taskbar.top, monitor.top);
+    } else {
+        thickness = taskbar.Width();
+        visible = std::min(taskbar.right, monitor.right) - std::max(taskbar.left, monitor.left);
+    }
+    if (thickness <= 0) return false;
+    return visible * 2 >= thickness;
+}
+
+bool IsFullscreenOnMonitor(const Rect& window, const Rect& monitor, bool windowIsShell) {
+    if (windowIsShell) return false;
+    return window.left <= monitor.left && window.top <= monitor.top &&
+           window.right >= monitor.right && window.bottom >= monitor.bottom;
+}
+
+}  // namespace nsm
