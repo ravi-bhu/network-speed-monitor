@@ -65,13 +65,22 @@ void OverlayWindow::Show(const OverlayPlacement& p, const OverlayContent& c) {
     POINT src{0, 0};
     BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
     UpdateLayeredWindow(hwnd_, nullptr, &dst, &size, memDc_, &src, 0, &blend, ULW_ALPHA);
-    // Re-assert topmost on every update: clicking the taskbar raises it above us within the topmost band.
-    SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    // Topmost is asserted only when the window appears; afterwards the owner decides when to
+    // re-assert it (RaiseTopmost), so a fullscreen app or a shell flyout is never covered.
+    if (!IsWindowVisible(hwnd_))
+        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
 void OverlayWindow::Hide() {
-    if (hwnd_) ShowWindow(hwnd_, SW_HIDE);
+    if (hwnd_ && IsWindowVisible(hwnd_)) ShowWindow(hwnd_, SW_HIDE);
 }
+
+void OverlayWindow::RaiseTopmost() {
+    if (hwnd_ && IsWindowVisible(hwnd_))
+        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+}
+
+bool OverlayWindow::Visible() const { return hwnd_ && IsWindowVisible(hwnd_); }
 
 bool OverlayWindow::EnsureSurface(SIZE size) {
     if (size.cx <= 0 || size.cy <= 0) return false;
@@ -134,6 +143,11 @@ LRESULT OverlayWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         }
         case WM_DPICHANGED:
             return 0;  // size and position come from the taskbar probe, not from the suggested rect
+        case WM_CLOSE:
+            // e.g. `taskkill` without /f: let the owner (the app window) close the app instead of
+            // destroying one overlay under its manager.
+            if (HWND owner = GetWindow(hwnd_, GW_OWNER)) PostMessageW(owner, WM_CLOSE, 0, 0);
+            return 0;
         default:
             return DefWindowProcW(hwnd_, msg, wp, lp);
     }

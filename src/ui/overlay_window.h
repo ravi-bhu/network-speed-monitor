@@ -10,6 +10,7 @@
 namespace nsm {
 
 // A layered, topmost, non-activating popup that shows the readout at a given placement.
+// WM_CLOSE is forwarded to the owner window.
 class OverlayWindow {
 public:
     OverlayWindow() = default;
@@ -19,9 +20,12 @@ public:
 
     bool Create(HINSTANCE inst, HWND owner);
     // Shows at p.rect (or hides when !p.visible). The graph is drawn iff p.showGraph,
-    // since the placement width decides whether it fits.
+    // since the placement width decides whether it fits. A hidden window is shown as topmost;
+    // an already visible one keeps its place in the z-order.
     void Show(const OverlayPlacement& p, const OverlayContent& c);
     void Hide();
+    void RaiseTopmost();  // to the top of the topmost band, if visible; never activates
+    bool Visible() const;
     HWND Hwnd() const { return hwnd_; }
 
     std::function<void()> onLeftClick;

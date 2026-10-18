@@ -1,6 +1,8 @@
 #include <windows.h>
 #include <objbase.h>
 
+#include <utility>
+
 #include "doctest.h"
 #include "ui/taskbar_probe.h"
 
@@ -110,8 +112,52 @@ TEST_CASE("ProbeTaskbars finds the primary taskbar" * doctest::test_suite("integ
             "  tray ", pg.tray.left, ",", pg.tray.top, ",", pg.tray.right, ",", pg.tray.bottom, "  occupied ",
             pg.occupied.left, ",", pg.occupied.top, ",", pg.occupied.right, ",", pg.occupied.bottom, "  dpi ", pg.dpi,
             "  edge ", static_cast<int>(pg.edge), "  taskbars ", bars.size());
+    CHECK(bars.front().trayFound);
     CHECK(!pg.tray.Empty());      // TrayNotifyWnd on the primary taskbar
-    CHECK(!pg.occupied.Empty());  // UIA reports at least the Start button
+    CHECK(!pg.occupied.Empty());  // UIA reports at least one task button (this test's console window)
+}
+
+TEST_CASE("ProbeTaskbars skips the UIA extent where asked" * doctest::test_suite("integration")) {
+    if (!FindWindowW(L"Shell_TrayWnd", nullptr)) {
+        MESSAGE("No Shell_TrayWnd in this session; skipping.");
+        return;
+    }
+    const DPI_AWARENESS_CONTEXT prev = SetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    REQUIRE(SUCCEEDED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED)));
+    const auto noUia = ProbeTaskbars(OccupiedProbe::None);
+    const auto secondaryOnly = ProbeTaskbars(OccupiedProbe::SecondaryOnly);
+
+    // Cost of a probe with and without UIA, for the CPU budget (OverlayManager probes every 2 s).
+    // Wall time includes waiting for Explorer, which answers the cross-process UIA calls.
+    auto perProbe = [](OccupiedProbe mode) {
+        constexpr int kRuns = 10;
+        auto cpuMs = [] {
+            FILETIME c, e, k, u;
+            GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u);
+            const auto t = [](FILETIME f) { return (static_cast<unsigned long long>(f.dwHighDateTime) << 32) | f.dwLowDateTime; };
+            return static_cast<double>(t(k) + t(u)) / 10000.0;
+        };
+        LARGE_INTEGER f, a, b;
+        QueryPerformanceFrequency(&f);
+        const double cpu0 = cpuMs();
+        QueryPerformanceCounter(&a);
+        for (int i = 0; i < kRuns; ++i) ProbeTaskbars(mode);
+        QueryPerformanceCounter(&b);
+        const double wall = static_cast<double>(b.QuadPart - a.QuadPart) * 1000.0 / static_cast<double>(f.QuadPart);
+        return std::pair{wall / kRuns, (cpuMs() - cpu0) / kRuns};
+    };
+    const auto all = perProbe(OccupiedProbe::All);
+    const auto none = perProbe(OccupiedProbe::None);
+    MESSAGE("per probe (wall ms / own CPU ms): All ", all.first, " / ", all.second, "  None ", none.first, " / ",
+            none.second);
+    SetThreadDpiAwarenessContext(prev);
+
+    REQUIRE(!noUia.empty());
+    for (const auto& b : noUia) CHECK(b.geom.occupied.Empty());
+    REQUIRE(!secondaryOnly.empty());
+    CHECK(secondaryOnly.front().primary);
+    CHECK(secondaryOnly.front().geom.occupied.Empty());
+    CHECK(secondaryOnly.front().geom.tray == noUia.front().geom.tray);
 }
 
 TEST_CASE("IsWindows11 agrees with the registry build number" * doctest::test_suite("integration")) {

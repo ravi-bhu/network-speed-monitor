@@ -43,14 +43,15 @@ IUIAutomation* Uia() {
     return uia;
 }
 
-// Bounding rects of every Button descendant of the taskbar (task buttons, Start, Search, ...).
-std::vector<Rect> ButtonRects(HWND taskbar) {
+// Bounding rects of every Button descendant of `root` (task buttons; from the whole taskbar
+// also Start, Search, ...).
+std::vector<Rect> ButtonRects(HWND rootWindow) {
     std::vector<Rect> out;
     IUIAutomation* uia = Uia();
     if (!uia) return out;
 
     ComPtr<IUIAutomationElement> root;
-    if (FAILED(uia->ElementFromHandle(taskbar, &root)) || !root) return out;
+    if (FAILED(uia->ElementFromHandle(rootWindow, &root)) || !root) return out;
 
     VARIANT button;
     VariantInit(&button);
@@ -135,7 +136,17 @@ Edge EdgeFromAppBar(UINT edge) {
     }
 }
 
-TaskbarInfo Probe(HWND hwnd, bool primary) {
+// Where the UIA button search starts. On Windows 10 the task buttons all live under the
+// MSTaskListWClass window, a much smaller subtree than the whole taskbar (which also holds every
+// tray icon); the buttons left of it (Start, Search, Task View) never decide the placement. On
+// Windows 11 that window is absent or hidden, so search the whole taskbar.
+HWND OccupiedRoot(HWND taskbar) {
+    if (IsWindows11()) return taskbar;
+    HWND list = FindChildByClass(taskbar, L"MSTaskListWClass");
+    return list && IsWindowVisible(list) ? list : taskbar;
+}
+
+TaskbarInfo Probe(HWND hwnd, bool primary, bool measureOccupied) {
     TaskbarInfo info{};
     info.hwnd = hwnd;
     info.primary = primary;
@@ -166,8 +177,9 @@ TaskbarInfo Probe(HWND hwnd, bool primary) {
         trayFound = FindSecondaryClock(hwnd, g.tray);
     }
     if (!trayFound) g.tray = FallbackTray(g.taskbar, g.edge);
+    info.trayFound = trayFound;
 
-    g.occupied = OccupiedExtent(ButtonRects(hwnd), g.taskbar, g.tray, g.edge);
+    if (measureOccupied) g.occupied = OccupiedExtent(ButtonRects(OccupiedRoot(hwnd)), g.taskbar, g.tray, g.edge);
     return info;
 }
 
@@ -199,12 +211,13 @@ Rect OccupiedExtent(const std::vector<Rect>& buttons, const Rect& taskbar, const
     return occupied;
 }
 
-std::vector<TaskbarInfo> ProbeTaskbars() {
+std::vector<TaskbarInfo> ProbeTaskbars(OccupiedProbe occupied) {
     std::vector<TaskbarInfo> out;
-    if (HWND primary = FindWindowW(L"Shell_TrayWnd", nullptr)) out.push_back(Probe(primary, true));
+    if (HWND primary = FindWindowW(L"Shell_TrayWnd", nullptr))
+        out.push_back(Probe(primary, true, occupied == OccupiedProbe::All));
     for (HWND h = FindWindowExW(nullptr, nullptr, L"Shell_SecondaryTrayWnd", nullptr); h;
          h = FindWindowExW(nullptr, h, L"Shell_SecondaryTrayWnd", nullptr)) {
-        out.push_back(Probe(h, false));
+        out.push_back(Probe(h, false, occupied != OccupiedProbe::None));
     }
     return out;
 }

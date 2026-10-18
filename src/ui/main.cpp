@@ -3,107 +3,116 @@
 #include <shellapi.h>
 
 #include <cmath>
-#include <optional>
 
-#include "core/overlay_layout.h"
 #include "core/speed_history.h"
 #include "platform/strings.h"
-#include "platform/theme.h"
 #include "resource.h"
-#include "ui/overlay_renderer.h"
-#include "ui/overlay_window.h"
-#include "ui/taskbar_probe.h"
+#include "ui/overlay_manager.h"
 
 namespace nsm {
 namespace {
 
-// --demo: one overlay on the primary taskbar, fed with sine-wave speeds.
-// Left-click toggles the graph, right-click toggles arrows/letters.
+constexpr wchar_t kDemoClass[] = L"NetworkSpeedMonitor.DemoWindow";
+
+// --demo [--all-taskbars] [--demo-seconds N]: the overlay manager fed with sine-wave speeds.
+// Left-click toggles the graph, right-click toggles arrows/letters. The demo ends cleanly (and
+// so restores the Windows 10 task list) after N seconds, or when its window gets WM_CLOSE,
+// e.g. from `taskkill /im NetworkSpeedMonitor.exe` without /f.
 class Demo {
 public:
-    Demo() { instance_ = this; }
-    ~Demo() { instance_ = nullptr; }
+    Demo() = default;
     Demo(const Demo&) = delete;
     Demo& operator=(const Demo&) = delete;
 
-    bool Start(HINSTANCE inst) {
-        if (!overlay_.Create(inst, nullptr)) return false;
-        SetWindowTextW(overlay_.Hwnd(), LoadStr(IDS_APP_NAME).c_str());
-        overlay_.onLeftClick = [this] {
-            graph_ = !graph_;
-            Update();
+    bool Start(HINSTANCE inst, bool allTaskbars, unsigned seconds) {
+        seconds_ = seconds;
+        options_.allTaskbars = allTaskbars;
+        WNDCLASSEXW wc{sizeof(wc)};
+        wc.lpfnWndProc = &Demo::WndProc;
+        wc.hInstance = inst;
+        wc.lpszClassName = kDemoClass;
+        if (!RegisterClassExW(&wc)) return false;
+        // Hidden top-level window, not HWND_MESSAGE: it must get the TaskbarCreated broadcast.
+        hwnd_ = CreateWindowExW(WS_EX_TOOLWINDOW, kDemoClass, LoadStr(IDS_APP_NAME).c_str(), WS_POPUP, 0, 0, 0, 0,
+                                nullptr, nullptr, inst, this);
+        if (!hwnd_) return false;
+
+        manager_.onLeftClick = [this] {
+            options_.showGraph = !options_.showGraph;
+            manager_.SetOptions(options_);
         };
-        overlay_.onRightClick = [this](POINT) {
-            letters_ = !letters_;
-            Update();
+        manager_.onRightClick = [this](POINT) {
+            options_.letters = !options_.letters;
+            manager_.SetOptions(options_);
         };
+        manager_.SetOptions(options_);
+        if (!manager_.Init(inst, hwnd_)) return false;
+        manager_.SetTooltip(LoadStr(IDS_APP_NAME));
         Tick();
-        return SetTimer(nullptr, 0, 1000, &Demo::OnTimer) != 0;
+        return SetTimer(hwnd_, 1, 1000, nullptr) != 0;
     }
 
 private:
-    static void CALLBACK OnTimer(HWND, UINT, UINT_PTR, DWORD) { instance_->Tick(); }
+    static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
+        if (msg == WM_NCCREATE) {
+            auto* cs = reinterpret_cast<CREATESTRUCTW*>(lp);
+            SetWindowLongPtrW(hwnd, GWLP_USERDATA, reinterpret_cast<LONG_PTR>(cs->lpCreateParams));
+        }
+        auto* self = reinterpret_cast<Demo*>(GetWindowLongPtrW(hwnd, GWLP_USERDATA));
+        if (!self) return DefWindowProcW(hwnd, msg, wp, lp);
+        switch (msg) {
+            case WM_TIMER:
+                self->Tick();
+                if (self->seconds_ && self->ticks_ >= self->seconds_) PostMessageW(hwnd, WM_CLOSE, 0, 0);
+                return 0;
+            case WM_DESTROY:
+                KillTimer(hwnd, 1);
+                self->manager_.Shutdown();  // restores the Win10 task list
+                PostQuitMessage(0);
+                return 0;
+            default:
+                if (self->manager_.HandleMessage(msg, wp, lp)) return 0;
+                if (msg == WM_ENDSESSION && wp) DestroyWindow(hwnd);
+                return DefWindowProcW(hwnd, msg, wp, lp);
+        }
+    }
 
     void Tick() {
         const double t = static_cast<double>(++ticks_);
-        speed_ = Speed{2.5e6 * (1.0 + std::sin(t * 0.21)) + 2e3, 3.0e5 * (1.0 + std::sin(t * 0.37 + 1.0)) + 5e2};
-        history_.Push(*speed_);
-        if (ticks_ % 2 == 1) Probe();  // every 2 s, starting with the first tick
-        Update();
+        const Speed speed{2.5e6 * (1.0 + std::sin(t * 0.21)) + 2e3, 3.0e5 * (1.0 + std::sin(t * 0.37 + 1.0)) + 5e2};
+        history_.Push(speed);
+        manager_.Update(speed, history_);
     }
 
-    void Probe() {
-        geom_.reset();
-        for (const TaskbarInfo& bar : ProbeTaskbars()) {
-            if (bar.primary) geom_ = bar.geom;
-        }
-    }
-
-    void Update() {
-        if (!geom_) {
-            overlay_.Hide();
-            return;
-        }
-        if (!sizes_ || sizesDpi_ != geom_->dpi || sizesLetters_ != letters_) {
-            sizes_ = MeasureOverlay(geom_->dpi, letters_);
-            sizesDpi_ = geom_->dpi;
-            sizesLetters_ = letters_;
-        }
-        const OverlayPlacement placement = PlaceOverlay(*geom_, *sizes_, graph_);
-        const OverlayContent content{
-            speed_, UnitMode::Bytes, letters_, placement.showGraph, &history_, IsTaskbarLight(), geom_->dpi};
-        overlay_.Show(placement, content);
-    }
-
-    static inline Demo* instance_ = nullptr;  // for the TIMERPROC
-
-    OverlayWindow overlay_;
+    HWND hwnd_ = nullptr;
+    OverlayManager manager_;
+    OverlayOptions options_;
     SpeedHistory history_;
-    std::optional<Speed> speed_;
-    std::optional<TaskbarGeometry> geom_;
-    std::optional<OverlaySizes> sizes_;
-    unsigned sizesDpi_ = 0;
-    bool sizesLetters_ = false;
-    bool graph_ = true;
-    bool letters_ = false;
     unsigned ticks_ = 0;
+    unsigned seconds_ = 0;  // 0: run until closed
 };
 
-bool HasArg(const wchar_t* wanted) {
-    int argc = 0;
-    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-    bool found = false;
-    for (int i = 1; argv && i < argc; ++i) found = found || wcscmp(argv[i], wanted) == 0;
-    LocalFree(argv);
-    return found;
+// Index of `wanted` in argv, or 0 if absent.
+int FindArg(int argc, LPWSTR* argv, const wchar_t* wanted) {
+    for (int i = 1; argv && i < argc; ++i) {
+        if (wcscmp(argv[i], wanted) == 0) return i;
+    }
+    return 0;
 }
 
 int RunDemo(HINSTANCE inst) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    const bool allTaskbars = FindArg(argc, argv, L"--all-taskbars") != 0;
+    const int secondsAt = FindArg(argc, argv, L"--demo-seconds");
+    const unsigned seconds = secondsAt && secondsAt + 1 < argc ? static_cast<unsigned>(_wtoi(argv[secondsAt + 1])) : 0;
+    LocalFree(argv);
+
     if (FAILED(CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED))) return 1;  // UI Automation needs an STA
     int code = 1;
     {
         Demo demo;
-        if (demo.Start(inst)) {
+        if (demo.Start(inst, allTaskbars, seconds)) {
             MSG msg;
             while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
                 TranslateMessage(&msg);
@@ -114,6 +123,14 @@ int RunDemo(HINSTANCE inst) {
     }
     CoUninitialize();
     return code;
+}
+
+bool HasArg(const wchar_t* wanted) {
+    int argc = 0;
+    LPWSTR* argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+    const bool found = FindArg(argc, argv, wanted) != 0;
+    LocalFree(argv);
+    return found;
 }
 
 }  // namespace
