@@ -14,4 +14,6 @@ set(NSM_SOURCE_URL "" CACHE STRING "Source repository URL shown in the About box
 enable_testing()
 
 add_subdirectory(src/core)
+add_subdirectory(src/platform)
+add_subdirectory(src/ui)
 add_subdirectory(tests)

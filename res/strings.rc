@@ -1,0 +1,8 @@
+// All user-visible strings. Loaded with nsm::LoadStr(UINT id).
+#pragma code_page(65001)
+#include "resource.h"
+
+STRINGTABLE
+BEGIN
+    IDS_APP_NAME "Network Speed Monitor"
+END
