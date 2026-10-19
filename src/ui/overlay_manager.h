@@ -48,7 +48,10 @@ public:
     // request). WM_DISPLAYCHANGE, WM_DPICHANGED, WM_SETTINGCHANGE and WM_ENDSESSION are acted on
     // but return false, so the app can still handle them and pass them to DefWindowProc.
     bool HandleMessage(UINT msg, WPARAM wp, LPARAM lp);
-    void Shutdown();  // restores Win10 task list space
+    // Restores the Win10 task list space. Safe to call re-entrantly (e.g. WM_ENDSESSION or
+    // WM_CLOSE delivered while a probe pumps messages): no work runs after it, and the
+    // overlay windows are destroyed once the interrupted work unwinds.
+    void Shutdown();
 
     std::function<void()> onLeftClick;
     std::function<void(POINT)> onRightClick;
@@ -78,6 +81,7 @@ private:
 
     void Rebuild();
     void DestroyBars();
+    void Teardown();  // DestroyBars and release the static instance
     void Probe(OccupiedProbe occupied);
     void FollowTaskbars();
     bool TrayChanged() const;
@@ -121,6 +125,7 @@ private:
 
     bool busy_ = false;
     unsigned pending_ = 0;
+    bool teardownPending_ = false;  // Shutdown ran inside Run; destroy the overlays when Run unwinds
 };
 
 // Pure rules behind the manager (exposed for tests).

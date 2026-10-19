@@ -91,7 +91,10 @@ bool WantsOverlay(bool primary, bool trayFound, bool allTaskbars) {
 }
 
 OverlayManager::OverlayManager() = default;
-OverlayManager::~OverlayManager() { Shutdown(); }
+OverlayManager::~OverlayManager() {
+    Shutdown();
+    if (teardownPending_) Teardown();
+}
 
 bool OverlayManager::Init(HINSTANCE inst, HWND appWnd) {
     if (initialized_ || instance_) return false;
@@ -112,10 +115,24 @@ bool OverlayManager::Init(HINSTANCE inst, HWND appWnd) {
 
 void OverlayManager::Shutdown() {
     if (!initialized_) return;
+    initialized_ = false;  // Run and every Execute step stop here, including frames below us
     if (foregroundHook_) UnhookWinEvent(foregroundHook_);
     foregroundHook_ = nullptr;
-    DestroyBars();  // restores the Win10 task list
-    initialized_ = false;
+    if (locationHook_) UnhookWinEvent(locationHook_);
+    locationHook_ = nullptr;
+    space_.Restore();  // now (or right after a write to Explorer that is in flight)
+    if (busy_) {
+        // Re-entered from a pumping call (UIA, a cross-process SetWindowPos) inside Run: frames
+        // below still use bars_, so destroy the windows once Run unwinds.
+        teardownPending_ = true;
+        return;
+    }
+    Teardown();
+}
+
+void OverlayManager::Teardown() {
+    teardownPending_ = false;
+    DestroyBars();
     instance_ = nullptr;
 }
 
@@ -197,8 +214,8 @@ void CALLBACK OverlayManager::OnWinEvent(HWINEVENTHOOK, DWORD event, HWND hwnd, 
         return;
     }
     if (event != EVENT_OBJECT_LOCATIONCHANGE || idObject != OBJID_WINDOW || idChild != CHILDID_SELF || !hwnd) return;
-    if (self->busy_) {  // bars_ may be mid-rebuild: queue the cheap catch-all instead of looking
-        self->Run(kTaskbarMoved);
+    if (self->busy_) {  // bars_ may be mid-rebuild: queue every location check instead of looking
+        self->Run(kTaskbarMoved | kTrayMoved | kSpace);
         return;
     }
     if (hwnd == self->space_.TaskSwitch()) {
@@ -224,6 +241,7 @@ void OverlayManager::Run(unsigned work) {
     }
     pending_ = 0;
     busy_ = false;
+    if (teardownPending_) Teardown();  // Shutdown arrived while we were busy
 }
 
 void OverlayManager::Execute(unsigned w) {
@@ -231,16 +249,21 @@ void OverlayManager::Execute(unsigned w) {
         Rebuild();
         return;
     }
-    if (w & kSpace) space_.OnLocationChange(space_.TaskSwitch());
+    // The periodic probes double as a check that the Win10 reservation is still in place (a
+    // GetWindowRect unless Explorer changed it), in case a location event was missed.
+    if (w & (kSpace | kFullProbe | kLightProbe)) space_.OnLocationChange(space_.TaskSwitch());
+    if (!initialized_) return;  // every step below can pump messages and so meet a Shutdown
     if (w & kFullProbe) {
         Probe(FullProbeMode());
     } else if (w & kLightProbe) {
         Probe(OccupiedProbe::None);
     } else {
         if (w & kTaskbarMoved) FollowTaskbars();
-        if ((w & kTrayMoved) && TrayChanged()) Probe(OccupiedProbe::None);
+        if (initialized_ && (w & kTrayMoved) && TrayChanged()) Probe(OccupiedProbe::None);
     }
+    if (!initialized_) return;
     if (w & kPlace) Place();
+    if (!initialized_) return;
     if (w & (kShell | kForeground)) EvaluateShell();
     Render();
     // Re-assert topmost when the foreground changes (clicking the taskbar raises it over us),
@@ -257,7 +280,9 @@ void OverlayManager::Rebuild() {
     trayNotify_ = FindWindowExW(taskbar_, nullptr, L"TrayNotifyWnd", nullptr);
     if (!IsWindows11()) space_.Attach(taskbar_);
 
-    for (const TaskbarInfo& info : ProbeTaskbars(FullProbeMode())) {
+    const std::vector<TaskbarInfo> probed = ProbeTaskbars(FullProbeMode());
+    if (!initialized_) return;  // Shutdown ran while UIA pumped messages; it restored the space
+    for (const TaskbarInfo& info : probed) {
         if (!WantsOverlay(info.primary, info.trayFound, options_.allTaskbars)) continue;
         auto bar = std::make_unique<Bar>();
         bar->info = info;
@@ -299,8 +324,10 @@ OccupiedProbe OverlayManager::FullProbeMode() const {
 void OverlayManager::Probe(OccupiedProbe occupied) {
     ticksSinceProbe_ = 0;
     probeDue_ = false;
+    const std::vector<TaskbarInfo> probed = ProbeTaskbars(occupied);
+    if (!initialized_) return;  // Shutdown ran while UIA pumped messages
     std::vector<TaskbarInfo> wanted;
-    for (const TaskbarInfo& info : ProbeTaskbars(occupied)) {
+    for (const TaskbarInfo& info : probed) {
         if (WantsOverlay(info.primary, info.trayFound, options_.allTaskbars)) wanted.push_back(info);
     }
     const bool sameSet = wanted.size() == bars_.size() &&
@@ -333,7 +360,7 @@ void OverlayManager::FollowTaskbars() {
         if (now.Width() != g.taskbar.Width() || now.Height() != g.taskbar.Height() ||
             MonitorFromWindow(bar->info.hwnd, MONITOR_DEFAULTTONEAREST) != bar->info.monitor) {
             Probe(FullProbeMode());  // resized, moved to another edge or monitor, or a DPI change
-            return;
+            return;  // bars_ may have been rebuilt
         }
         // Same size, new position: the auto-hide slide. Move everything with it; no probe.
         const int dx = now.left - g.taskbar.left, dy = now.top - g.taskbar.top;
@@ -369,7 +396,7 @@ void OverlayManager::Place() {
         bar->placement = PlaceOverlay(g, *bar->sizes, options_.showGraph);
         if (bar->info.primary) primary = bar.get();
     }
-    if (!space_.Attached()) return;
+    if (!space_.Attached() || !initialized_) return;
     if (primary && primary->placement.visible) {
         const TaskbarGeometry& g = primary->info.geom;
         space_.Reserve(primary->placement.rect, g.edge, Margin(g.dpi));

@@ -59,13 +59,14 @@ Already checked automatically on Windows 10 22H2 (build 19045, 125% scaling, dar
 - [ ] **Z-order:** click an empty part of the taskbar, then a task button, then the desktop. The readout stays in front of the taskbar each time (it's re-raised when the foreground changes, and the 1 s tick catches the rest).
 - [ ] **30 real windows,** with "Combine taskbar buttons" set to Never and then Always. The task list scrolls rather than running under the readout. Exit the demo cleanly; the task list gets its full width back.
 - [ ] **Forced kill** (`taskkill /f /im NetworkSpeedMonitor.exe`): the task list stays short (a known limitation). Record what restores it (opening a window, resizing the taskbar, restarting Explorer).
+- [ ] **Re-layout loop damping:** while the demo runs, add and remove tray icons and change the taskbar size a few times. The task list ends before the readout each time. If Explorer keeps undoing the reservation (more than 5 re-applies in 2 s), the demo backs off for 10 s and then tries again; record whether that ever shows.
 - [ ] **Sign out or shut down** with the demo running. After signing back in, the task list has its full width (restored on WM_ENDSESSION).
 - [ ] **Theme:** switch Dark/Light while it runs. The readout recolors within 1 s, with no restart.
 - [ ] **Scaling:** change 125% to 150% and back while it runs. The readout is re-measured, stays crisp, sits in the right place, and the reserved space follows. Then change the resolution.
 - [ ] **Toolbars:** right-click the taskbar > Toolbars > Links or Desktop. Check that the readout doesn't cover the toolbar band, since the reservation assumes the task list is the last band before the tray. Record what you see.
 - [ ] **Small taskbar buttons** on and off while it runs: the readout and reserved space follow.
 - [ ] **Tooltip:** hover over the readout. "Network Speed Monitor" (the demo's text) appears and goes away when the mouse leaves.
-- [ ] **Tray clock:** run the demo for 3+ minutes, then exit. The tray clock updates every minute throughout. (While this task was being built, this machine's clock stayed at 1:14 AM from the first demo run onwards. Explorer was responsive and idle, and the cause is unknown. See the Task 5 report.)
+- [ ] **Tray clock:** run the demo for 3+ minutes, then exit. The tray clock updates every minute throughout. (While this task was being built, this machine's clock stayed at 1:14 AM from the first demo run onwards, with Explorer responsive and idle; the cause is unknown. After Explorer was restarted, a 200 s demo run with the reservation active kept the clock advancing (7:25 to 7:29).)
 - [ ] **CPU:** Task Manager > Details over 60 s is below 0.5%.
 
 ### Windows 11 (VM)
