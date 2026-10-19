@@ -14,7 +14,8 @@ usage report. It makes no network connections and sends nothing anywhere.
 - Left-click the readout to open the usage report. Right-click it for the adapter, units, graph and letters
   options, **Open report…**, **Settings…** and **Exit**.
 - The report has **Summary**, **Timeline**, **Adapters** and **Wi-Fi networks** tabs, a period picker (today,
-  this week, this month, last 30 days, all time, or a custom range) and **Export CSV…**. You can rename or hide
+  yesterday, this week, last week, this month, last month, last 30 days, this year, all time, or a custom range)
+  and **Export CSV…**. You can rename or hide
   an adapter and clear the history of one adapter, one network or everything.
 - Records usage per hour while it runs (hourly rows kept 90 days, then rolled up to daily). Traffic while the app
   isn't running is not counted.
@@ -25,6 +26,11 @@ usage report. It makes no network connections and sends nothing anywhere.
 **Export CSV…** in the report saves the selected period, for every adapter and network, as UTF-8 with columns
 `start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes`
 (one row per hour, or per day for history older than 90 days).
+
+The `series` column says what a row counts. `internet` rows are your internet traffic, through whichever
+adapter carried it; `adapter` rows are each adapter's own traffic, so a VPN and the Wi-Fi it runs over both
+count. The two series overlap: don't add up rows across series. Filter on one series first; `internet` matches
+the report's headline numbers.
 
 Network and adapter names come from outside the app (anyone can name a Wi-Fi network), so a name that starts
 with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading `'`. Spreadsheets then show it as
