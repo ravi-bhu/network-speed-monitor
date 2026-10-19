@@ -6,9 +6,13 @@ add_library(nsm_ui STATIC
   taskbar_space_win10.cpp
   overlay_manager.cpp
   app.cpp
+  report_paint.cpp
+  report_window.cpp
+  dialogs.cpp
 )
 target_include_directories(nsm_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. PRIVATE ${CMAKE_SOURCE_DIR}/res)
-target_link_libraries(nsm_ui PUBLIC nsm_core nsm_platform nsm_storage d2d1 dwrite ole32 oleaut32 shcore comctl32)
+target_link_libraries(nsm_ui PUBLIC nsm_core nsm_platform nsm_storage nsm_report d2d1 dwrite ole32 oleaut32 shcore comctl32
+  uxtheme dwmapi)
 
 add_executable(NetworkSpeedMonitor WIN32
   main.cpp

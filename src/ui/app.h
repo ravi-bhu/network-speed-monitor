@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
@@ -21,6 +22,7 @@
 #include "platform/settings.h"
 #include "storage/usage_store.h"
 #include "ui/overlay_manager.h"
+#include "ui/report_window.h"
 
 namespace nsm {
 
@@ -42,7 +44,7 @@ public:
 
     // cmdLine: the full command line (GetCommandLineW). Returns the process exit code.
     int Run(HINSTANCE inst, const std::wstring& cmdLine);
-    void ShowReport(int tab = 0);  // stub here; implemented by Task 15
+    void ShowReport(int tab = 0);  // open (or bring forward) the report window on a tab
     void FlushNow();               // write the accumulator to the store
 
 private:
@@ -58,6 +60,7 @@ private:
     void ApplyOptions();  // overlay options from settings_, then save
     void SaveSettingsFile();
     void UpdateTooltip();
+    void ReloadAdapterNames();  // after a rename or hide in the report
     void Exit();
 
     HINSTANCE inst_ = nullptr;
@@ -71,6 +74,8 @@ private:
     TimeZone tz_ = TimeZone::Local();      // a snapshot: refreshed on WM_TIMECHANGE/WM_SETTINGCHANGE and per RollUp
 
     OverlayManager overlay_;
+    std::unique_ptr<ReportWindow> report_;  // the object stays; its window exists only while open
+    std::optional<ReportTheme> reportTheme_;  // --theme light|dark|contrast (Debug builds)
     NetChangeWatcher watcher_;
     Sampler sampler_;
     SpeedHistory history_;
@@ -92,6 +97,7 @@ private:
     bool menuPending_ = false;
     POINT menuPt_{};
     std::FILE* trace_ = nullptr;  // --trace <file> (Debug builds): one CSV line per tick
+    std::filesystem::path dataDirOverride_;  // --data-dir <path> (Debug builds): use a test data folder
 };
 
 // Pure rules behind App (exposed for tests).

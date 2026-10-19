@@ -108,3 +108,39 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **A new Wi-Fi network:** join a network the PC hasn't seen. Within about 10 s the usage is recorded under that network (Windows names a new network a few seconds after it connects; the app re-reads networks 10 s after each change).
 - [ ] **Start with Windows:** sign out and in; the app starts and shows the readout.
 - [ ] **Windows 11 VM:** the menu, tooltip and a second launch behave as above.
+
+## Task 15: Report window
+
+Open it by left-clicking the readout, from the menu (Open report…), or by starting the exe a second time. Debug builds accept `--data-dir <folder>`, which uses that folder instead of `%LOCALAPPDATA%\NetworkSpeedMonitor` (put `StartWithWindows=0` under `[General]` in its `settings.ini` so the run doesn't register itself in HKCU Run). They also accept `--theme light|dark|contrast`, which forces the report window's look without changing Windows settings. `contrast` runs the High Contrast code path with whatever system colours are current.
+
+Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125%, India Standard Time UTC+5:30, dark apps mode with accent-coloured title bars). The checks ran against a seeded copy of the database in `%TEMP%` plus live recording. Screens were captured with `SetProcessDPIAware`, and the window was driven by posted messages:
+- All four tabs, in light and dark. The light, dark and `contrast` looks were forced per window with `--theme`.
+- The timeline shows stacked bars, received in the download colour under sent in the upload colour. Bars are hourly for Today (labels keep the :30 of a half-hour time zone), daily for This month and Last 30 days, and monthly for All time ("Nov 2025 … Oct" across two years).
+- The bar tooltip appears with exact values. It was shown with the arrow keys on the focused chart.
+- Changing the period updates the range label, the selected-period card, the timeline and both tables. Custom range… opens prefilled with the current period's dates, and the card is titled with the range.
+- The Summary card for Last 30 days (57.8 GB) equals the sum of the internet rows in the CSV exported for the same period.
+- Sorting works: clicking the Name header gives A to Z with the header arrow shown, and the selection survives the re-sort.
+- Rename… stores a friendly name. "WSL & Docker" shows in the overlay's Adapter submenu at once, with "&" kept. A blank name restores the Windows name.
+- Hide drops the adapter from the table and from the overlay's Adapter submenu. Show hidden adapters lists it as "… (hidden)", and Unhide restores it.
+- Clear this network's history… shows the Delete/Cancel task dialog, with Cancel as the default. After Delete, only that network key's rows are gone from `usage_hourly` and `usage_daily`. The unknown-network row's Clear item is greyed, because clearing by an empty key would also delete every adapter's rows that have no network.
+- Export CSV… opens the save dialog titled "Export usage for the selected period", with the default name `network-usage-2026-10-19.csv` and the "CSV files (*.csv)" filter. Saving to `%TEMP%` wrote a UTF-8 file with a BOM and the Task 14 header, covering exactly Sep 20 – Oct 19 for Last 30 days.
+- A corrupt `usage.db` shows the "couldn't be read… kept as <path>" banner. A store that can't be opened shows the "couldn't be saved recently" banner.
+- Tab order is Period → Export CSV… → Clear all history… → tabs → page (chart, or Show hidden → list), then back round. Esc closes only the report, and the app keeps running.
+- Closing and reopening restores the window's last position and size (from `settings.ini` `[ReportWindow]`).
+- `taskkill /im NetworkSpeedMonitor.exe` (no `/f`) with the report open ends the app.
+- Private working set (Debug build): 4.2 MB before opening, 9.8 MB with the report open, and 6.3 MB 60 s after closing it. A session that also used the save dialog ended at 12.5 MB, because the shell's file dialog leaves DLLs loaded.
+
+### Windows 10 / 11
+- [ ] **Real theme switch:** with the report open, switch Settings > Colors between Dark and Light. The window, tabs, lists, buttons and chart recolour without reopening. On Windows 10 with "Show accent colour on title bars" off, the title bar is dark in dark mode.
+- [ ] **High Contrast:** turn on each High Contrast theme (Black, White, #1, #2), with the report open and after reopening it. Everything uses the theme's colours. Received bars are solid and sent bars hollow with an outline. The tabs, lists, buttons and checkbox are the system's own. Text is readable everywhere.
+- [ ] **Keyboard by hand:** Ctrl+Tab and Ctrl+Shift+Tab switch tabs (the automated run couldn't inject Ctrl). Alt+P focuses Period, Alt+E exports, and Alt+C clears. Shift+F10 on a table row opens its menu. Left/Right/Home/End on the focused chart move the highlighted bar and its tooltip.
+- [ ] **Mouse on the chart:** hovering a bar shows its tooltip by the pointer, and it hides when the pointer leaves the chart or the window loses focus.
+- [ ] **Period list with the mouse:** open the list and pick Custom range…; the dialog opens once. Picking Custom range… again while it's selected reopens the dialog with the last range. Cancel keeps the previous period.
+- [ ] **Clear all history…** on a throwaway database: after Delete, every tab is empty and new traffic starts appearing within a minute.
+- [ ] **Excel:** open an exported CSV in Excel. The columns are start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes, and "Café Corner, 5G"-style names stay in one cell.
+- [ ] **Overlay click:** left-click the readout. The report opens in front, and a second click brings it forward instead of opening another.
+- [ ] **DPI:** move the report between monitors with different scaling, or change scaling while it's open. Text and controls rescale, and the chart stays crisp.
+- [ ] **Release memory:** with a Release build and your real data, open the report, visit every tab, close it, then wait a minute. Task Manager's "Memory (private working set)" is back under 15 MB.
+- [ ] **Screen reader:** Narrator reads the period box, buttons, tabs and table cells. The Summary and Timeline drawings aren't exposed to UI Automation (a known gap); record how Narrator handles them.
+- [ ] **taskkill while a popup shows:** with the chart's tooltip or any menu visible, `taskkill` without `/f` may hit the popup's system shadow window and do nothing. This is a known limitation, shared by the overlay's own tooltip and menu. Confirm that it works once the popup is gone.
+- [ ] **Windows 11 VM:** all of the above, plus whether the Win11 dark mode draws the checkbox, combo box and scroll bars dark.

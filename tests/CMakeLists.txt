@@ -21,6 +21,8 @@ add_executable(nsm_tests
   test_report_model.cpp
   test_csv_export.cpp
   test_app.cpp
+  test_report_paint.cpp
+  test_report_window.cpp
   ${CMAKE_SOURCE_DIR}/res/strings.rc
 )
 target_include_directories(nsm_tests PRIVATE ${CMAKE_SOURCE_DIR}/third_party/doctest ${CMAKE_SOURCE_DIR}/res)

@@ -186,6 +186,8 @@ int App::Run(HINSTANCE inst, const std::wstring& cmdLine) {
                 if (msg.hwnd == hwnd_ && msg.message == WM_APP_SHOWMENU) {
                     menuPending_ = true;
                     menuPt_ = POINT{GET_X_LPARAM(msg.lParam), GET_Y_LPARAM(msg.lParam)};
+                } else if (report_ && report_->PreTranslateMessage(msg)) {
+                    // keyboard navigation inside the report window
                 } else {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
@@ -218,6 +220,15 @@ bool App::Start(HINSTANCE inst, const std::wstring& cmdLine) {
             std::fflush(trace_);
         }
     }
+    // Development runs against a test database instead of the user's history.
+    if (const std::wstring dir = ArgValue(cmdLine, L"--data-dir"); !dir.empty()) dataDirOverride_ = dir;
+    if (const std::wstring theme = ArgValue(cmdLine, L"--theme"); theme == L"light") {
+        reportTheme_ = ReportTheme::Light;
+    } else if (theme == L"dark") {
+        reportTheme_ = ReportTheme::Dark;
+    } else if (theme == L"contrast") {
+        reportTheme_ = ReportTheme::HighContrast;  // the High Contrast code path, with the current system colours
+    }
 #else
     (void)cmdLine;
 #endif
@@ -234,7 +245,13 @@ bool App::Start(HINSTANCE inst, const std::wstring& cmdLine) {
         return false;
     }
 
-    dataDir_ = DataDir();
+    if (!dataDirOverride_.empty()) {
+        std::error_code ec;
+        std::filesystem::create_directories(dataDirOverride_, ec);
+        dataDir_ = dataDirOverride_;
+    } else {
+        dataDir_ = DataDir();
+    }
     if (!dataDir_.empty()) settings_ = LoadSettings(dataDir_ / L"settings.ini");
     SetAutostart(settings_.startWithWindows);
 
@@ -245,7 +262,8 @@ bool App::Start(HINSTANCE inst, const std::wstring& cmdLine) {
     }
     RollUpNow();
 
-    overlay_.onLeftClick = [this] { ShowReport(0); };
+    // Clicks can arrive inside a COM/UIA modal pump, so the report is opened from the message loop.
+    overlay_.onLeftClick = [this] { PostMessageW(hwnd_, WM_APP_SHOWREPORT, 0, 0); };
     // Clicks can arrive inside a COM/UIA modal pump, so the menu is only requested here.
     overlay_.onRightClick = [this](POINT pt) { PostMessageW(hwnd_, WM_APP_SHOWMENU, 0, MAKELPARAM(pt.x, pt.y)); };
     overlay_.SetOptions(OverlayOptions{settings_.allTaskbars, settings_.showGraph, settings_.letters, settings_.units});
@@ -410,8 +428,25 @@ void App::RollUpNow() {
 }
 
 void App::ShowReport(int tab) {
-    (void)tab;  // Task 15: the report window
-    OutputDebugStringW(L"NetworkSpeedMonitor: ShowReport\n");
+    if (exiting_) return;
+    if (!report_) {
+        report_ = std::make_unique<ReportWindow>(inst_, store_, hwnd_);
+        report_->beforeQuery = [this] { FlushNow(); };
+        report_->onBoundsChanged = [this](RECT r) {
+            settings_.reportRect = r;
+            SaveSettingsFile();
+        };
+        report_->onAdaptersChanged = [this] { ReloadAdapterNames(); };
+        if (!recoveredFile_.empty()) report_->SetCorruptionNotice(recoveredFile_);
+        report_->SetThemeOverride(reportTheme_);
+        report_->SetSavedRect(settings_.reportRect);
+    }
+    report_->Show(tab);
+}
+
+void App::ReloadAdapterNames() {
+    if (recording_) metas_ = store_.Adapters();
+    UpdateTooltip();
 }
 
 void App::UpdateTooltip() {
@@ -506,6 +541,7 @@ void App::Exit() {
     exiting_ = true;
     KillTimer(hwnd_, kTickTimer);
     KillTimer(hwnd_, kRefreshTimer);
+    if (report_) report_->Close();  // saves its bounds
     FlushNow();
     overlay_.Shutdown();  // before any window goes: restores the Win10 task list
     watcher_.Stop();
