@@ -2,6 +2,7 @@ name: Pages
 
 # Publishes site/ to GitHub Pages. The custom domain (netspeed.ravibhushan.dev) is set in repo
 # Settings -> Pages; the CNAME file in site/ is kept for clarity, but Actions deploys ignore it.
+# Pull requests only run the checker; nothing is uploaded or deployed from them.
 on:
   push:
     branches: [main]
@@ -9,37 +10,47 @@ on:
       - 'site/**'
       - '.github/workflows/pages.yml'
       - 'tools/check_site.py'
+  pull_request:
+    paths:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
+      - 'tools/check_site.py'
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-# Let a running deploy finish rather than cancel it half way; the next one queues behind it.
-concurrency:
-  group: pages
-  cancel-in-progress: false
+permissions: {}
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      # Fail before publishing if a link, asset or version string is broken.
+      # Fail before publishing (or merging) if a link, asset or version string is broken.
       - name: Check the site
         run: python tools/check_site.py
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - if: github.event_name != 'pull_request'
+        uses: actions/configure-pages@v5
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v3
         with:
           path: site
 
   deploy:
+    if: github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    # Let a running deploy finish rather than cancel it half way; the next one queues behind it.
+    # Only deploys share this group, so pull request checks never wait on one.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

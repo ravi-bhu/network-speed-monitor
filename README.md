@@ -94,7 +94,8 @@ to `changelog.html` by hand.
 
 One-time setup:
 
-1. Settings, Pages, Source: **GitHub Actions**.
+1. Settings, Pages, Source: **GitHub Actions**. Do this before the first push to `main` that touches `site/`,
+   otherwise that first deploy fails (re-run it from the Actions tab).
 2. DNS: a CNAME record `netspeed` pointing to `ravi-bhu.github.io`.
 3. Settings, Pages, Custom domain: `netspeed.ravibhushan.dev`. Turn on **Enforce HTTPS** once the certificate is
    issued.
