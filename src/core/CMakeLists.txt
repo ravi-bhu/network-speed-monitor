@@ -1,6 +1,7 @@
 add_library(nsm_core STATIC
   units.cpp
   counter_tracker.cpp
+  sampler.cpp
   speed_history.cpp
   overlay_layout.cpp
 )

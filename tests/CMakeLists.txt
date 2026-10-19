@@ -2,6 +2,7 @@ add_executable(nsm_tests
   test_main.cpp
   test_units.cpp
   test_counter_tracker.cpp
+  test_sampler.cpp
   test_speed_history.cpp
   test_overlay_layout.cpp
   test_taskbar_probe.cpp

@@ -1,0 +1,48 @@
+#include "doctest.h"
+
+#include "core/sampler.h"
+
+using namespace nsm;
+
+namespace {
+AdapterSample S(const wchar_t* id, uint64_t rx, uint64_t tx, double t) {
+    return AdapterSample{id, CounterReading{rx, tx, 1'000'000'000, t}};
+}
+}
+
+TEST_CASE("Sampler: per-adapter deltas and internet delta") {
+    Sampler s; s.Tick({S(L"A",0,0,0), S(L"B",0,0,0)}, L"A", L"A");
+    auto r = s.Tick({S(L"A",1000,100,1), S(L"B",500,0,1)}, L"A", L"A");
+    CHECK(r.perAdapter.size() == 2); REQUIRE(r.internet); CHECK(r.internet->adapterId == L"A"); CHECK(r.internet->rx == 1000);
+    REQUIRE(r.display); CHECK(r.display->rx == doctest::Approx(1000));
+}
+TEST_CASE("Sampler: internet series follows the internet adapter per tick") {
+    Sampler s; s.Tick({S(L"A",0,0,0), S(L"B",0,0,0)}, L"A", L"A");
+    auto r1 = s.Tick({S(L"A",1000,0,1), S(L"B",50,0,1)}, L"A", L"A");
+    auto r2 = s.Tick({S(L"A",1000,0,2), S(L"B",2050,0,2)}, L"B", L"B");
+    REQUIRE(r1.internet); REQUIRE(r2.internet);
+    CHECK(r1.internet->adapterId == L"A"); CHECK(r1.internet->rx == 1000);
+    CHECK(r2.internet->adapterId == L"B"); CHECK(r2.internet->rx == 2000);
+}
+TEST_CASE("Sampler: no internet adapter gives no display speed") {
+    Sampler s; s.Tick({S(L"A",0,0,0)}, L"", L""); auto r = s.Tick({S(L"A",10,0,1)}, L"", L"");
+    CHECK(!r.display); CHECK(!r.internet); CHECK(r.perAdapter.size() == 1);
+}
+TEST_CASE("Sampler: pinned adapter missing gives no display speed") {
+    Sampler s; auto r = s.Tick({S(L"A",0,0,0)}, L"A", L"VPN"); CHECK(!r.display);
+}
+TEST_CASE("Sampler: invalid speed repeats last valid value, zero if none") {
+    Sampler s; auto first = s.Tick({S(L"A",0,0,0)}, L"A", L"A");
+    REQUIRE(first.display); CHECK(first.display->rx == 0);
+    s.Tick({S(L"A",4000,0,1)}, L"A", L"A");
+    auto gap = s.Tick({S(L"A",8000,0,100)}, L"A", L"A");
+    REQUIRE(gap.display); CHECK(gap.display->rx == doctest::Approx(4000));
+    REQUIRE(gap.internet); CHECK(gap.internet->rx == 4000);
+}
+TEST_CASE("Sampler: adapter that disappears and returns starts fresh") {
+    Sampler s; s.Tick({S(L"A",0,0,0)}, L"A", L"A"); s.Tick({S(L"A",5000,0,1)}, L"A", L"A");
+    s.Tick({}, L"", L"A");
+    auto back = s.Tick({S(L"A",100,0,3)}, L"A", L"A");
+    CHECK(back.perAdapter.empty()); CHECK(!back.internet);
+    auto next = s.Tick({S(L"A",1100,0,4)}, L"A", L"A"); REQUIRE(next.internet); CHECK(next.internet->rx == 1000);
+}
