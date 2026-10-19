@@ -35,3 +35,18 @@ TEST_CASE("NetChangeWatcher starts, stops and restarts" * doctest::test_suite("i
     }  // destructor stops
     DestroyWindow(hwnd);
 }
+
+TEST_CASE("NetChangeWatcher clears pending when the post fails" * doctest::test_suite("integration")) {
+    HWND hwnd = CreateWindowExW(0, L"STATIC", L"", 0, 0, 0, 0, 0, HWND_MESSAGE, nullptr,
+                                GetModuleHandleW(nullptr), nullptr);
+    REQUIRE(hwnd != nullptr);
+    NetChangeWatcher w;
+    REQUIRE(w.Start(hwnd, WM_APP + 1));
+    w.Notify();
+    CHECK(w.IsPending());  // posted successfully, coalescing
+    w.Acknowledge();
+    DestroyWindow(hwnd);
+    w.Notify();  // post fails: window is gone
+    CHECK(!w.IsPending());
+    w.Stop();
+}

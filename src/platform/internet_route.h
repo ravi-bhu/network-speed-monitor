@@ -25,12 +25,13 @@ public:
 
     bool Start(HWND notify, UINT msg);
     void Stop();  // safe to call repeatedly
+    bool IsPending() const { return pending_; }
+    void Notify();  // what the OS callbacks call; public so tests can drive it
     void Acknowledge();  // clears the pending flag; call from the message handler
 
 private:
     static void CALLBACK OnRouteChange(PVOID ctx, PMIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE);
     static void CALLBACK OnInterfaceChange(PVOID ctx, PMIB_IPINTERFACE_ROW, MIB_NOTIFICATION_TYPE);
-    void Notify();
 
     HWND hwnd_ = nullptr;
     UINT msg_ = 0;

@@ -30,7 +30,8 @@ NetChangeWatcher::~NetChangeWatcher() { Stop(); }
 
 void NetChangeWatcher::Notify() {
     bool expected = false;
-    if (pending_.compare_exchange_strong(expected, true)) PostMessageW(hwnd_, msg_, 0, 0);
+    // If the post fails (window gone, queue full) clear the flag so later changes aren't suppressed.
+    if (pending_.compare_exchange_strong(expected, true) && !PostMessageW(hwnd_, msg_, 0, 0)) pending_ = false;
 }
 
 void CALLBACK NetChangeWatcher::OnRouteChange(PVOID ctx, PMIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE) {
