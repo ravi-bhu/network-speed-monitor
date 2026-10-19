@@ -95,7 +95,8 @@ bool ExportCsv(const std::filesystem::path& file, UsageStore& store, UtcRange r,
         char buf[32];
         for (const auto& h : store.QueryHourly(r)) {
             const LocalDateTime t = tz.ToLocal(h.hourUtc);
-            std::snprintf(buf, sizeof buf, "%04d-%02d-%02d %02d:00", t.year, t.month, t.day, t.hour);
+            // Buckets start on the local hour, except the short one after a part-hour DST change (02:30).
+            std::snprintf(buf, sizeof buf, "%04d-%02d-%02d %02d:%02d", t.year, t.month, t.day, t.hour, t.minute);
             AppendRow(body, buf, "hour", h.series, h.adapterId, h.networkKey, h.rx, h.tx, lk);
         }
         for (const auto& d : store.QueryDaily(LocalDateOf(r.begin, tz), LocalDateOf(r.end - 1, tz))) {

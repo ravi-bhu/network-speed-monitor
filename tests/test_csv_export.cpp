@@ -98,6 +98,17 @@ TEST_CASE("ExportCsv writes UTF-8 with BOM" * doctest::test_suite("integration")
     CHECK_FALSE(fs::exists(fs::path(file).concat(L".tmp")));
 }
 
+TEST_CASE("ExportCsv writes the local start of a short bucket with its minutes" * doctest::test_suite("integration")) {
+    TempDir d; UsageStore st; REQUIRE(st.Open(d.dir / L"usage.db") == UsageStore::OpenResult::Ok);
+    auto tz = *TimeZone::FromKey(L"Lord Howe Standard Time");
+    // 15:30Z on 2026-10-03 is the 02:00 -> 02:30 DST change: the bucket starts at 02:30 local.
+    UsageRow r{UtcOf(2026, 10, 3, 15, 30), Series::Internet, L"e", L"", 3, 4};
+    st.AddUsage(std::span<const UsageRow>(&r, 1));
+    const auto file = d.dir / L"lh.csv";
+    REQUIRE(ExportCsv(file, st, {UtcOf(2026, 10, 3, 13, 30), UtcOf(2026, 10, 4, 13)}, tz));
+    CHECK(ReadAll(file).find("2026-10-04 02:30,hour,internet,e,e,other,,3,4\r\n") != std::string::npos);
+}
+
 TEST_CASE("ExportCsv includes daily rows and respects the range" * doctest::test_suite("integration")) {
     TempDir d; UsageStore st; REQUIRE(st.Open(d.dir / L"usage.db") == UsageStore::OpenResult::Ok);
     auto tz = *TimeZone::FromKey(L"Pacific Standard Time");

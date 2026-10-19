@@ -13,6 +13,11 @@ int64_t UtcOf(int y, int mo, int d, int h, int mi = 0) {
     return _mkgmtime(&tm);
 }
 TimeZone Pst() { return *TimeZone::FromKey(L"Pacific Standard Time"); }
+TimeZone Zone(const wchar_t* key) {
+    auto tz = TimeZone::FromKey(key);
+    REQUIRE(tz);
+    return *tz;
+}
 }
 
 TEST_CASE("Today on DST fall-back day is 25 hours" * doctest::test_suite("integration")) {
@@ -82,6 +87,45 @@ TEST_CASE("HourStart floors to the hour") {
     CHECK(HourStart(UtcOf(2026,5,5,5) + 1799) == UtcOf(2026,5,5,5));
     CHECK(HourStart(UtcOf(1969,12,31,23) + 5) == UtcOf(1969,12,31,23));
 }
+TEST_CASE("LocalHourStart equals HourStart in a whole-hour zone, DST days included" * doctest::test_suite("integration")) {
+    const auto pst = Pst();
+    for (int64_t t = UtcOf(2026, 10, 31, 12); t < UtcOf(2026, 11, 2, 12); t += 600) CHECK(LocalHourStart(t, pst) == HourStart(t));
+    for (int64_t t = UtcOf(2026, 3, 7, 12); t < UtcOf(2026, 3, 9, 12); t += 600) CHECK(LocalHourStart(t, pst) == HourStart(t));
+    // Fall-back: the two 01:00 hours (08:00Z PDT, 09:00Z PST) stay separate buckets.
+    CHECK(LocalHourStart(UtcOf(2026, 11, 1, 8, 59), pst) == UtcOf(2026, 11, 1, 8));
+    CHECK(LocalHourStart(UtcOf(2026, 11, 1, 9, 0), pst) == UtcOf(2026, 11, 1, 9));
+}
+
+TEST_CASE("LocalHourStart floors to the local hour in +5:30 and +5:45" * doctest::test_suite("integration")) {
+    const auto ist = Zone(L"India Standard Time");
+    // 00:10 IST on Oct 19 is 18:40Z on Oct 18: its bucket is 00:00 IST (18:30Z), the new day.
+    CHECK(LocalHourStart(UtcOf(2026, 10, 18, 18, 40), ist) == UtcOf(2026, 10, 18, 18, 30));
+    CHECK(LocalHourStart(UtcOf(2026, 10, 18, 18, 30), ist) == UtcOf(2026, 10, 18, 18, 30));
+    CHECK(LocalHourStart(UtcOf(2026, 10, 18, 18, 29), ist) == UtcOf(2026, 10, 18, 17, 30));   // 23:59 IST
+    const auto npt = Zone(L"Nepal Standard Time");
+    // 00:10 NPT on Oct 19 is 18:25Z: bucket 00:00 NPT (18:15Z).
+    CHECK(LocalHourStart(UtcOf(2026, 10, 18, 18, 25), npt) == UtcOf(2026, 10, 18, 18, 15));
+    CHECK(LocalHourStart(UtcOf(2026, 10, 18, 18, 14), npt) == UtcOf(2026, 10, 18, 17, 15));   // 23:59 NPT
+}
+
+TEST_CASE("LocalHourStart across Lord Howe's 30-minute DST" * doctest::test_suite("integration")) {
+    const auto lh = Zone(L"Lord Howe Standard Time");
+    // Start: 2026-10-04 02:00 LHST (+10:30) -> 02:30 LHDT (+11), at 15:30Z on Oct 3.
+    const int64_t on = UtcOf(2026, 10, 3, 15, 30);
+    CHECK(lh.ToLocal(on).hour == 2); CHECK(lh.ToLocal(on).minute == 30);
+    CHECK(LocalHourStart(on - 600, lh) == on - 3600);         // 01:50 LHST: the 01:00 bucket
+    CHECK(LocalHourStart(on, lh) == on);                      // 02:30 LHDT: a short bucket from the transition
+    CHECK(LocalHourStart(on + 1799, lh) == on);
+    CHECK(LocalHourStart(on + 1800, lh) == on + 1800);        // 03:00 LHDT
+    // End: 2026-04-05 02:00 LHDT (+11) -> 01:30 LHST (+10:30), at 15:00Z on Apr 4.
+    const int64_t off = UtcOf(2026, 4, 4, 15);
+    CHECK(lh.ToLocal(off).hour == 1); CHECK(lh.ToLocal(off).minute == 30);
+    CHECK(LocalHourStart(off - 600, lh) == off - 3600);       // 01:50 LHDT
+    CHECK(LocalHourStart(off, lh) == off);                    // 01:30 LHST
+    CHECK(LocalHourStart(off + 1799, lh) == off);
+    CHECK(LocalHourStart(off + 1800, lh) == off + 1800);      // 02:00 LHST
+}
+
 TEST_CASE("FirstDayOfWeekFromLocale returns 0..6" * doctest::test_suite("integration")) {
     int d = FirstDayOfWeekFromLocale();
     CHECK(d >= 0); CHECK(d <= 6);

@@ -52,6 +52,18 @@ std::wstring DisplayName(const AdapterMeta& m) {
 
 int64_t DayNumber(LocalDate d) { return DaysFromCivil(d.year, d.month, d.day); }
 
+// The start of the hour bucket after the one that starts at h. LocalHourStart never decreases and always
+// moves on within 3600 s, so search (h, h + 3600]. A plain h + 3600 would skip the short bucket after a
+// transition off the hour (Chatham's 02:45 -> 03:45 leaves 03:45-04:00).
+int64_t NextHourStart(int64_t h, const TimeZone& tz) {
+    int64_t lo = h, hi = h + 3600;   // LocalHourStart(lo) == h < LocalHourStart(hi)
+    while (hi - lo > 1) {
+        const int64_t mid = lo + (hi - lo) / 2;
+        if (LocalHourStart(mid, tz) == h) lo = mid; else hi = mid;
+    }
+    return hi;
+}
+
 }  // namespace
 
 ReportModel::ReportModel(UsageStore& store, const TimeZone& tz, int firstDayOfWeek)
@@ -83,7 +95,8 @@ SummaryData ReportModel::Summary(UtcRange period, int64_t nowUtc) {
 
 Granularity ReportModel::PickGranularity(UtcRange r, int64_t nowUtc) {
     const int64_t span = r.end - r.begin;
-    if (span <= 25 * 3600 && r.begin >= HourStart(nowUtc) - 90 * kDay) return Granularity::Hour;
+    // The same cutoff as UsageStore::RollUp: every hourly row from here on is still stored.
+    if (span <= 25 * 3600 && r.begin >= LocalHourStart(nowUtc, tz_) - 90 * kDay) return Granularity::Hour;
     if (span <= 92 * kDay) return Granularity::Day;
     return Granularity::Month;
 }
@@ -96,12 +109,14 @@ std::vector<TimelineBar> ReportModel::Timeline(UtcRange r, int64_t nowUtc) {
     const bool open = r.begin == 0;   // AllTime: start at the first bucket with data
 
     if (g == Granularity::Hour) {
+        // Local-hour buckets (keys as recorded; re-floored in case the zone changed since).
         std::map<int64_t, Totals> byHour;
-        for (const auto& h : rows.hourly) Add(byHour[HourStart(h.hourUtc)], h.rx, h.tx);
+        for (const auto& h : rows.hourly) Add(byHour[LocalHourStart(h.hourUtc, tz_)], h.rx, h.tx);
         if (open && byHour.empty()) return bars;
-        const int64_t first = open ? byHour.begin()->first : HourStart(r.begin);
-        const int64_t last = HourStart(r.end - 1);
-        for (int64_t h = first; h <= last; h += 3600) {
+        // From the first bucket at or after r.begin: no bar for an hour that started before the range.
+        int64_t first = open ? byHour.begin()->first : LocalHourStart(r.begin, tz_);
+        if (first < r.begin) first = NextHourStart(first, tz_);
+        for (int64_t h = first; h < r.end; h = NextHourStart(h, tz_)) {
             TimelineBar b;
             b.start = tz_.ToLocal(h);
             if (auto it = byHour.find(h); it != byHour.end()) b.totals = it->second;

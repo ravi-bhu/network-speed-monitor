@@ -370,7 +370,8 @@ std::vector<DailyRow> UsageStore::QueryDaily(LocalDate from, LocalDate to) {
 
 void UsageStore::RollUp(int64_t nowUtc, const TimeZone& tz) {
     Write([&] {
-        const int64_t cutoff = HourStart(nowUtc) - kRollUpAgeSeconds;
+        // The same cutoff as ReportModel::PickGranularity, on local-hour buckets.
+        const int64_t cutoff = LocalHourStart(nowUtc, tz) - kRollUpAgeSeconds;
 
         using Key = std::tuple<std::string, int, std::wstring, std::wstring>;
         std::map<Key, std::pair<uint64_t, uint64_t>> sums;

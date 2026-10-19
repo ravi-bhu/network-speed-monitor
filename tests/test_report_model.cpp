@@ -7,6 +7,7 @@
 #include <random>
 
 #include "core/periods.h"
+#include "core/usage_accumulator.h"
 #include "report/report_model.h"
 
 using namespace nsm;
@@ -35,7 +36,68 @@ void AddHour(UsageStore& st, int64_t h, Series s, const wchar_t* a, const wchar_
     UsageRow r{h, s, a, n, rx, tx};
     st.AddUsage(std::span<const UsageRow>(&r, 1));
 }
+TimeZone Zone(const wchar_t* key) {
+    auto tz = TimeZone::FromKey(key);
+    REQUIRE(tz);
+    return *tz;
+}
+// Records traffic the way the app does: bucketed by LocalHourStart, then flushed to the store.
+void Record(UsageStore& st, int64_t nowUtc, const TimeZone& tz, uint64_t rx, uint64_t tx) {
+    UsageAccumulator acc;
+    acc.Add(LocalHourStart(nowUtc, tz), Series::Internet, L"a", L"", rx, tx);
+    const std::vector<UsageRow> rows = acc.Take();
+    REQUIRE(st.AddUsage(rows));
+}
+// Today's hourly timeline must be the day's local hours, from 00:00, with nothing before midnight.
+void CheckTodayStartsAtMidnight(const TimeZone& tz, int64_t now) {
+    TempDb t; UsageStore st; REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);
+    Record(st, now, tz, 70, 7);
+    ReportModel m(st, tz, 0);
+    const UtcRange today = ResolvePeriod(Period::Today, now, tz, 0);
+    CHECK(m.Summary(today, now).today.Total() == 77);   // in the new day's total
+    CHECK(m.Summary(ResolvePeriod(Period::Yesterday, now, tz, 0), now).period.Total() == 0);
+    REQUIRE(m.PickGranularity(today, now) == Granularity::Hour);
+    const auto bars = m.Timeline(today, now);
+    REQUIRE(bars.size() == 24);
+    for (size_t i = 0; i < bars.size(); ++i) {
+        CHECK(bars[i].start.hour == static_cast<int>(i));
+        CHECK(bars[i].start.minute == 0);
+    }
+    CHECK(bars[0].totals.Total() == 77);
+}
 }  // namespace
+
+TEST_CASE("IST: traffic at 00:10 counts for the new day and Today has 24 bars from 12 AM" *
+          doctest::test_suite("integration")) {
+    CheckTodayStartsAtMidnight(Zone(L"India Standard Time"), UtcOf(2026, 10, 18, 18, 40));   // Oct 19 00:10 IST
+}
+
+TEST_CASE("Nepal (+5:45): traffic at 00:10 counts for the new day and Today has 24 bars from 12 AM" *
+          doctest::test_suite("integration")) {
+    CheckTodayStartsAtMidnight(Zone(L"Nepal Standard Time"), UtcOf(2026, 10, 18, 18, 25));   // Oct 19 00:10 NPT
+}
+
+TEST_CASE("Whole-hour zone: traffic at 00:10 counts for the new day and Today has 24 bars from 12 AM" *
+          doctest::test_suite("integration")) {
+    CheckTodayStartsAtMidnight(Pst(), UtcOf(2026, 10, 18, 7, 10));   // Oct 18 00:10 PDT
+}
+
+TEST_CASE("Timeline keeps the short hour after Chatham's 2:45 DST change" * doctest::test_suite("integration")) {
+    // 2026-09-27 02:45 CHAST (+12:45) -> 03:45 CHADT (+13:45) at 14:00Z on Sep 26: a 23-hour day whose
+    // 02:00 hour lasts 45 minutes and whose 03:45 hour lasts 15.
+    const auto tz = Zone(L"Chatham Islands Standard Time");
+    TempDb t; UsageStore st; REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);
+    const int64_t now = UtcOf(2026, 9, 26, 14, 5);   // 03:50 CHADT
+    Record(st, now, tz, 40, 2);
+    ReportModel m(st, tz, 0);
+    const auto bars = m.Timeline(ResolvePeriod(Period::Today, now, tz, 0), now);
+    REQUIRE(bars.size() == 24);
+    CHECK(bars[2].start.hour == 2);  CHECK(bars[2].start.minute == 0);
+    CHECK(bars[3].start.hour == 3);  CHECK(bars[3].start.minute == 45);
+    CHECK(bars[3].totals.Total() == 42);
+    CHECK(bars[4].start.hour == 4);  CHECK(bars[4].start.minute == 0);
+    CHECK(bars[23].start.hour == 23);
+}
 
 TEST_CASE("Summary uses internet series only" * doctest::test_suite("integration")) {
     TempDb t; UsageStore st; REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);

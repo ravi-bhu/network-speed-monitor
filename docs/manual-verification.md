@@ -167,3 +167,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Release workflow:** push a test tag such as `v0.1.0` on a fork. It fails at "Check imports" until `tools/check_imports.ps1` exists (Task 18); once it does, the run produces both installers, `SHA256SUMS.txt` and a GitHub Release. The disabled SignPath steps are skipped.
 - [ ] **README:** the screenshot renders on GitHub and the docs read correctly (README, PRIVACY, CONTRIBUTING, SECURITY, THIRD_PARTY_NOTICES, docs/signing.md).
 - [ ] **Windows 11 VM:** repeat the install, autostart and both uninstall checks.
+
+## Final review fixes
+- [ ] **Elevated first instance (F1):** start `NetworkSpeedMonitor.exe` with "Run as administrator", then start it again normally. The second copy exits at once: one overlay, and usage is not double counted. (The report does not open, because Windows blocks the message to the elevated copy.) Exit the elevated copy afterwards.
+- [ ] **Half-hour time zone (F4):** set Windows to (UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi and run the app across local midnight. After 00:00, the report's Today shows the new traffic, and its Timeline has 24 bars from 12 AM with no 11:30 PM bar. Repeat with (UTC+05:45) Kathmandu if you can.

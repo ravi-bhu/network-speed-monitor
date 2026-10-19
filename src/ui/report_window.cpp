@@ -259,9 +259,9 @@ std::wstring BarTitle(const LocalDateTime& start, Granularity g, const wchar_t* 
     const SYSTEMTIME st = SystemTimeOf(start.year, start.month, start.day, start.hour, start.minute);
     switch (g) {
         case Granularity::Hour: {
-            // Only the time of the end is shown, so the date it falls on doesn't matter.
-            const SYSTEMTIME end =
-                SystemTimeOf(start.year, start.month, start.day, (start.hour + 1) % 24, start.minute);
+            // Buckets end on the next full local hour (a short one after a part-hour DST change starts
+            // at :30 or :45). Only the time of the end is shown, so the date it falls on doesn't matter.
+            const SYSTEMTIME end = SystemTimeOf(start.year, start.month, start.day, (start.hour + 1) % 24, 0);
             return FillPlaceholders(LoadStr(IDS_BAR_HOUR), {DateText(st, DATE_LONGDATE, nullptr, locale),
                                                             TimeText(st, TIME_NOSECONDS, locale),
                                                             TimeText(end, TIME_NOSECONDS, locale)});

@@ -4,9 +4,9 @@
 
 namespace nsm {
 
-void UsageAccumulator::Add(int64_t nowUtc, Series s, const std::wstring& adapterId,
+void UsageAccumulator::Add(int64_t hourStartUtc, Series s, const std::wstring& adapterId,
                            const std::wstring& networkKey, uint64_t rx, uint64_t tx) {
-    auto& v = rows_[Key{HourStart(nowUtc), static_cast<int>(s), adapterId, networkKey}];
+    auto& v = rows_[Key{hourStartUtc, static_cast<int>(s), adapterId, networkKey}];
     v.first += rx;
     v.second += tx;
 }
@@ -22,8 +22,8 @@ std::vector<UsageRow> UsageAccumulator::Take() {
     return out;
 }
 
-bool ShouldFlush(int64_t lastFlushUtc, int64_t nowUtc) {
-    return nowUtc - lastFlushUtc >= 300 || HourStart(lastFlushUtc) != HourStart(nowUtc);
+bool ShouldFlush(int64_t lastFlushUtc, int64_t nowUtc, const TimeZone& tz) {
+    return nowUtc - lastFlushUtc >= 300 || LocalHourStart(lastFlushUtc, tz) != LocalHourStart(nowUtc, tz);
 }
 
 }  // namespace nsm

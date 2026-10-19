@@ -156,8 +156,8 @@ TEST_CASE("RollUpDue once every 24 h of uptime") {
 
 TEST_CASE("FlushAccumulator writes everything and empties the accumulator") {
     UsageAccumulator acc;
-    acc.Add(UtcOf(2026, 10, 18, 10, 5), Series::Adapter, L"{A}", L"{N}", 100, 10);
-    acc.Add(UtcOf(2026, 10, 18, 10, 6), Series::Internet, L"{A}", L"{N}", 100, 10);
+    acc.Add(UtcOf(2026, 10, 18, 10), Series::Adapter, L"{A}", L"{N}", 100, 10);
+    acc.Add(UtcOf(2026, 10, 18, 10), Series::Internet, L"{A}", L"{N}", 100, 10);
     std::vector<UsageRow> written;
     const bool ok = FlushAccumulator(acc, [&](std::span<const UsageRow> rows) {
         written.assign(rows.begin(), rows.end());
@@ -171,14 +171,14 @@ TEST_CASE("FlushAccumulator writes everything and empties the accumulator") {
 TEST_CASE("FlushAccumulator puts rows back when the write fails, so the next flush retries without loss") {
     UsageAccumulator acc;
     const int64_t h10 = UtcOf(2026, 10, 18, 10);
-    acc.Add(h10 + 300, Series::Adapter, L"{A}", L"{N}", 100, 10);
-    acc.Add(h10 + 400, Series::Internet, L"{A}", L"", 7, 3);
+    acc.Add(h10, Series::Adapter, L"{A}", L"{N}", 100, 10);
+    acc.Add(h10, Series::Internet, L"{A}", L"", 7, 3);
 
     CHECK_FALSE(FlushAccumulator(acc, [](std::span<const UsageRow>) { return false; }));
     CHECK_FALSE(acc.Empty());
 
     // More traffic in the same hour arrives before the retry; it is summed, not duplicated.
-    acc.Add(h10 + 900, Series::Adapter, L"{A}", L"{N}", 1, 1);
+    acc.Add(h10, Series::Adapter, L"{A}", L"{N}", 1, 1);
 
     std::vector<UsageRow> written;
     CHECK(FlushAccumulator(acc, [&](std::span<const UsageRow> rows) {

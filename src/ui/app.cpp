@@ -418,12 +418,13 @@ void App::Tick() {
     const int64_t now = NowUtc();
 
     if (recording_) {
+        const int64_t hour = LocalHourStart(now, tz_);  // tz_ follows WM_TIMECHANGE/WM_SETTINGCHANGE
         for (const auto& d : t.perAdapter) {
-            accumulator_.Add(now, Series::Adapter, d.adapterId, NetworkKeyOf(networks_, d.adapterId), d.rx, d.tx);
+            accumulator_.Add(hour, Series::Adapter, d.adapterId, NetworkKeyOf(networks_, d.adapterId), d.rx, d.tx);
         }
         if (t.internet) {
-            accumulator_.Add(now, Series::Internet, t.internet->adapterId, NetworkKeyOf(networks_, t.internet->adapterId),
-                             t.internet->rx, t.internet->tx);
+            accumulator_.Add(hour, Series::Internet, t.internet->adapterId,
+                             NetworkKeyOf(networks_, t.internet->adapterId), t.internet->rx, t.internet->tx);
         }
     }
 
@@ -436,7 +437,7 @@ void App::Tick() {
     }
     overlay_.Update(t.display, history_);
 
-    if (ShouldFlush(lastFlushUtc_, now)) {
+    if (ShouldFlush(lastFlushUtc_, now, tz_)) {
         if (ShouldRetryOpen(recording_, !dataDir_.empty())) RetryOpenStore();
         FlushNow();
     }

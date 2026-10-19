@@ -144,10 +144,10 @@ TEST_CASE("AxisLabels: hours, keeping the minutes of half-hour time zones") {
     const auto hours =
         AxisLabels(Bars({{2026, 10, 19, 0, 0, 0}, {2026, 10, 19, 14, 0, 0}}), Granularity::Hour, L"en-US");
     CHECK(hours == std::vector<std::wstring>{L"12 AM", L"2 PM"});
-    // UTC+5:30: the stored UTC hours start at half past the local hour.
-    const auto india =
-        AxisLabels(Bars({{2026, 10, 18, 23, 30, 0}, {2026, 10, 19, 0, 30, 0}}), Granularity::Hour, L"en-US");
-    CHECK(india == std::vector<std::wstring>{L"11:30 PM", L"12:30 AM"});
+    // The short bucket after a part-hour transition (Lord Howe: 02:00 -> 02:30) keeps its minutes.
+    const auto lordHowe =
+        AxisLabels(Bars({{2026, 10, 4, 1, 0, 0}, {2026, 10, 4, 2, 30, 0}}), Granularity::Hour, L"en-US");
+    CHECK(lordHowe == std::vector<std::wstring>{L"1 AM", L"2:30 AM"});
 }
 
 TEST_CASE("AxisLabels: days show the weekday for a week, the month on the first bar and on the 1st") {
@@ -178,8 +178,9 @@ TEST_CASE("BarTitle names the hour, day or month a bar covers") {
           L"Monday, October 19, 2026, 2:00 PM – 3:00 PM");
     CHECK(BarTitle(LocalDateTime{2026, 10, 19, 23, 0, 0}, Granularity::Hour, L"en-US") ==
           L"Monday, October 19, 2026, 11:00 PM – 12:00 AM");
-    CHECK(BarTitle(LocalDateTime{2026, 10, 19, 11, 30, 0}, Granularity::Hour, L"en-US") ==
-          L"Monday, October 19, 2026, 11:30 AM – 12:30 PM");
+    // A short bucket after a part-hour transition ends on the next full hour.
+    CHECK(BarTitle(LocalDateTime{2026, 10, 4, 2, 30, 0}, Granularity::Hour, L"en-US") ==
+          L"Sunday, October 4, 2026, 2:30 AM – 3:00 AM");
     CHECK(BarTitle(LocalDateTime{2026, 10, 19, 0, 0, 0}, Granularity::Day, L"en-US") == L"Monday, October 19, 2026");
     CHECK(BarTitle(LocalDateTime{2026, 10, 1, 0, 0, 0}, Granularity::Month, L"en-US") == L"October 2026");
 }
@@ -214,7 +215,7 @@ struct TempStore {
     UsageStore store;  // after the store has closed the file
     TempStore() { REQUIRE(store.Open(dir.path / L"usage.db") == UsageStore::OpenResult::Ok); }
     void Add(const wchar_t* adapter, const wchar_t* network, uint64_t rx, uint64_t tx) {
-        const int64_t hour = HourStart(static_cast<int64_t>(_time64(nullptr)));
+        const int64_t hour = LocalHourStart(static_cast<int64_t>(_time64(nullptr)), TimeZone::Local());
         const UsageRow r{hour, Series::Adapter, adapter, network, rx, tx};
         REQUIRE(store.AddUsage(std::span<const UsageRow>(&r, 1)));
     }
@@ -233,6 +234,22 @@ std::wstring ItemText(HWND list, int item) {
 }
 
 }  // namespace
+
+TEST_CASE("IST: Today's timeline labels start at 12 AM" * doctest::test_suite("integration")) {
+    TempStore t;
+    const auto ist = *TimeZone::FromKey(L"India Standard Time");
+    const int64_t now = 1792348800;   // 2026-10-19 00:10 IST (18:40Z on Oct 18)
+    const UsageRow r{LocalHourStart(now, ist), Series::Internet, L"{A}", L"", 5, 5};
+    REQUIRE(t.store.AddUsage(std::span<const UsageRow>(&r, 1)));
+    ReportModel m(t.store, ist, 0);
+    const auto bars = m.Timeline(ResolvePeriod(Period::Today, now, ist, 0), now);
+    REQUIRE(bars.size() == 24);
+    const auto labels = AxisLabels(bars, Granularity::Hour, L"en-US");
+    CHECK(labels.front() == L"12 AM");
+    CHECK(labels.back() == L"11 PM");
+    CHECK(BarTitle(bars.front().start, Granularity::Hour, L"en-US") == L"Monday, October 19, 2026, 12:00 AM – 1:00 AM");
+    CHECK(bars.front().totals.Total() == 10);
+}
 
 TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting, and reopens where it closed" *
           doctest::test_suite("integration")) {

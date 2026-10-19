@@ -18,9 +18,30 @@ int64_t MidnightUtc(const TimeZone& tz, int64_t dayNumber) {
 
 int64_t FloorMod(int64_t a, int64_t b) { return ((a % b) + b) % b; }
 
+// The zone's offset from UTC in effect at an instant, in seconds.
+int64_t OffsetAt(int64_t utcSec, const TimeZone& tz) {
+    const LocalDateTime l = tz.ToLocal(utcSec);
+    return DaysFromCivil(l.year, l.month, l.day) * 86400 + l.hour * 3600 + l.minute * 60 + l.second - utcSec;
+}
+
 }  // namespace
 
 int64_t HourStart(int64_t utcSec) { return utcSec - FloorMod(utcSec, 3600); }
+
+int64_t LocalHourStart(int64_t utcSec, const TimeZone& tz) {
+    const int64_t offset = OffsetAt(utcSec, tz);
+    const int64_t start = utcSec - FloorMod(utcSec + offset, 3600);
+    if (OffsetAt(start, tz) == offset) return start;
+    // The offset changed earlier in this local hour, so the clock did not pass its :00 (Lord Howe's
+    // 02:00 -> 02:30): the bucket starts at the transition, the first instant in (start, utcSec] with
+    // utcSec's offset.
+    int64_t lo = start, hi = utcSec;
+    while (hi - lo > 1) {
+        const int64_t mid = lo + (hi - lo) / 2;
+        if (OffsetAt(mid, tz) == offset) hi = mid; else lo = mid;
+    }
+    return hi;
+}
 
 LocalDate LocalDateOf(int64_t utcSec, const TimeZone& tz) {
     const LocalDateTime l = tz.ToLocal(utcSec);
