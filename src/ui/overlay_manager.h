@@ -134,5 +134,13 @@ bool IsShellFlyoutClass(std::wstring_view cls);  // Start, search, Task View, tr
 // Whether a probed taskbar gets an overlay. The primary needs its real tray: without
 // TrayNotifyWnd the fallback would put the overlay over the tray icons and clock.
 bool WantsOverlay(bool primary, bool trayFound, bool allTaskbars);
+// What the 1 s tick does. followTaskbars re-reads each taskbar's rect (one GetWindowRect, no
+// UIA) every tick: Explorer doesn't raise a location event for the auto-hide slide, so a
+// hidden overlay would otherwise never notice the taskbar coming back.
+struct TickPlan {
+    bool rebuild = false, fullProbe = false, lightProbe = false, followTaskbars = false;
+};
+TickPlan PlanTick(bool explorerChanged, bool anyShown, bool probeDue, unsigned ticksSinceProbe, bool haveTaskbar,
+                  bool haveBars);
 
 }  // namespace nsm

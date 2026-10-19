@@ -18,6 +18,7 @@ struct OverlayContent {
     const SpeedHistory* history;
     bool light;                  // light taskbar
     unsigned dpi;
+    bool compact = false;        // FormatSpeedCompact values (narrow or crowded taskbar)
 };
 
 // Physical-pixel sizes at `dpi` for the widest plausible readout.

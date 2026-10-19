@@ -100,14 +100,18 @@ float WidthOf(const Text& t, const std::wstring& s) {
     return layout && SUCCEEDED(layout->GetMetrics(&m)) ? m.widthIncludingTrailingWhitespace : 0.0f;
 }
 
-float WidestTextWidth(const Text& t, bool letters) {
-    // Every shape FormatSpeed can print, in both unit modes and at every unit scale:
+std::wstring FormatValue(double bytesPerSec, UnitMode mode, bool compact) {
+    return compact ? FormatSpeedCompact(bytesPerSec, mode) : FormatSpeed(bytesPerSec, mode);
+}
+
+float WidestTextWidth(const Text& t, bool letters, bool compact) {
+    // Every shape the formatter can print, in both unit modes and at every unit scale:
     // "8.88 X", "88.8 X" and "888 X" (tabular figures, so 8 stands for any digit).
     std::vector<std::wstring> values{LoadStr(IDS_NO_VALUE)};
     for (UnitMode mode : {UnitMode::Bytes, UnitMode::Bits}) {
         const double perByte = mode == UnitMode::Bits ? 8.0 : 1.0;
         for (double scale = 1; scale <= 1e9; scale *= 1000) {
-            for (double v : {8.88, 88.8, 888.0}) values.push_back(FormatSpeed(v * scale / perByte, mode));
+            for (double v : {8.88, 88.8, 888.0}) values.push_back(FormatValue(v * scale / perByte, mode, compact));
         }
     }
     float widest = 0;
@@ -155,9 +159,11 @@ float LineWidthDip(const std::wstring& line) {
 OverlaySizes MeasureOverlay(unsigned dpi, bool letters) {
     const Text& t = GetText();
     if (!t.ok) return {0, 0, 0};
-    const float text = WidestTextWidth(t, letters);
+    const float text = WidestTextWidth(t, letters, false);
+    const float compact = WidestTextWidth(t, letters, true);
     const float height = std::max(2 * t.lineHeight, kGraphHeight);
-    return {ToPixels(text + kGraphGap + kGraphWidth, dpi), ToPixels(text, dpi), ToPixels(height, dpi)};
+    return {ToPixels(text + kGraphGap + kGraphWidth, dpi), ToPixels(text, dpi), ToPixels(height, dpi),
+            ToPixels(compact, dpi)};
 }
 
 void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) {
@@ -194,8 +200,8 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) 
         // Snap the first baseline box to a whole device pixel so text stays crisp.
         const float y0 = std::round((height - 2 * t.lineHeight) / 2 * scale) / scale;
         for (bool upload : {true, false}) {
-            const std::wstring value =
-                c.speed ? FormatSpeed(upload ? c.speed->tx : c.speed->rx, c.units) : LoadStr(IDS_NO_VALUE);
+            const std::wstring value = c.speed ? FormatValue(upload ? c.speed->tx : c.speed->rx, c.units, c.compact)
+                                               : LoadStr(IDS_NO_VALUE);
             const std::wstring prefix = Prefix(upload, c.letters);
             auto layout = MakeLayout(t, prefix + value, textWidth);
             if (!layout) continue;

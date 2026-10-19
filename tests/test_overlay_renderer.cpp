@@ -137,3 +137,15 @@ TEST_CASE("RenderOverlay draws a clickable background, text and graph" * doctest
     rt->Release();
     factory->Release();
 }
+
+TEST_CASE("MeasureOverlay: compact width fits a default-width vertical taskbar (#30)" * doctest::test_suite("integration")) {
+    for (bool letters : {false, true}) {
+        const OverlaySizes s = MeasureOverlay(96, letters);
+        CHECK(s.compactWidth > 0);
+        CHECK(s.compactWidth < s.textOnlyWidth);
+        CHECK(s.compactWidth <= 62);  // a 70 DIP left/right taskbar minus 2x4 DIP margins
+        for (UnitMode mode : {UnitMode::Bytes, UnitMode::Bits})
+            for (double v : {8.88e6, 88.8e6, 888e6, 9'996.0, 99'960.0})
+                CHECK(LineWidthDip(LinePrefix(true, letters) + FormatSpeedCompact(v, mode)) <= s.compactWidth - 2);
+    }
+}

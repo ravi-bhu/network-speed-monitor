@@ -39,3 +39,20 @@ TEST_CASE("WantsOverlay: secondary taskbars only with allTaskbars, clock fallbac
     CHECK(WantsOverlay(false, true, true));
     CHECK(WantsOverlay(false, false, true));
 }
+
+TEST_CASE("PlanTick: a hidden overlay still follows the taskbar every tick (#31)") {
+    // Auto-hide slid the taskbar away: nothing is shown, the bars exist, no probe is due.
+    const TickPlan p = PlanTick(false, false, false, 1, true, true);
+    CHECK(p.followTaskbars);
+    CHECK(!p.rebuild);
+    CHECK(!p.fullProbe);
+}
+
+TEST_CASE("PlanTick: rebuild when Explorer changed; probes on their cadence") {
+    CHECK(PlanTick(true, true, false, 5, true, true).rebuild);
+    const TickPlan shown = PlanTick(false, true, false, 2, true, true);
+    CHECK(shown.fullProbe);
+    const TickPlan noBars = PlanTick(false, false, false, 2, true, false);
+    CHECK(noBars.lightProbe);
+    CHECK(!noBars.followTaskbars);
+}

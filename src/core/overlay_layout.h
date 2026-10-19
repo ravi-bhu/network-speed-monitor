@@ -18,11 +18,17 @@ struct TaskbarGeometry {
     unsigned dpi;
 };
 
-struct OverlaySizes { int fullWidth, textOnlyWidth, height; };  // physical px at geometry.dpi
+// Physical px at geometry.dpi. compactWidth is the text in its compact form ("↑ 15.8MB"), the
+// last resort before hiding on a narrow (default-width vertical) or crowded taskbar; 0 = none.
+struct OverlaySizes {
+    int fullWidth, textOnlyWidth, height;
+    int compactWidth = 0;
+};
 
 struct OverlayPlacement {
     bool visible = false;
     bool showGraph = false;
+    bool compact = false;  // draw the values with FormatSpeedCompact
     Rect rect;
 };
 

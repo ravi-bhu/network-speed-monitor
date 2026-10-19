@@ -6,8 +6,8 @@
 namespace nsm {
 namespace {
 
-std::wstring Scale(double v, const wchar_t* const* units, int unitCount) {
-    if (!(v > 0)) v = 0;  // NaN or negative
+std::wstring Scale(double v, const wchar_t* const* units, int unitCount, const wchar_t* separator = L" ") {
+    if (!(v > 0) || !std::isfinite(v)) v = 0;  // NaN, infinite or negative
     int idx = 0;
     while (v >= 1000.0 && idx < unitCount - 1) { v /= 1000.0; ++idx; }
 
@@ -21,9 +21,12 @@ std::wstring Scale(double v, const wchar_t* const* units, int unitCount) {
         ++idx;
         d = decimalsFor(idx, v);
         r = roundTo(v, d);
+    } else if (decimalsFor(idx, r) < d) {  // rounding crossed 10 or 100: keep ~3 significant figures
+        d = decimalsFor(idx, r);
+        r = roundTo(v, d);
     }
     wchar_t buf[64];
-    swprintf(buf, std::size(buf), L"%.*f %ls", d, r, units[idx]);
+    swprintf(buf, std::size(buf), L"%.*f%ls%ls", d, r, separator, units[idx]);
     return buf;
 }
 
@@ -34,6 +37,13 @@ std::wstring FormatSpeed(double bytesPerSec, UnitMode mode) {
     static const wchar_t* const bits[] = {L"bps", L"Kbps", L"Mbps", L"Gbps"};
     if (mode == UnitMode::Bits) return Scale(bytesPerSec * 8.0, bits, 4);
     return Scale(bytesPerSec, bytes, 4);
+}
+
+std::wstring FormatSpeedCompact(double bytesPerSec, UnitMode mode) {
+    static const wchar_t* const bytes[] = {L"B", L"KB", L"MB", L"GB"};
+    static const wchar_t* const bits[] = {L"b", L"Kb", L"Mb", L"Gb"};
+    if (mode == UnitMode::Bits) return Scale(bytesPerSec * 8.0, bits, 4, L"");
+    return Scale(bytesPerSec, bytes, 4, L"");
 }
 
 std::wstring FormatVolume(uint64_t b) {

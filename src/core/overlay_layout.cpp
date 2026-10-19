@@ -32,6 +32,9 @@ OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, b
             p.showGraph = true;
         } else if (s.textOnlyWidth <= freeSpace) {
             width = s.textOnlyWidth;
+        } else if (s.compactWidth > 0 && s.compactWidth <= freeSpace) {
+            width = s.compactWidth;
+            p.compact = true;
         } else {
             return p;
         }
@@ -42,14 +45,17 @@ OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, b
     }
 
     const int width = g.taskbar.Width() - 2 * margin;
-    if (width < s.textOnlyWidth) return p;
-    const bool graph = wantGraph && width >= s.fullWidth;
+    // A default-width left/right taskbar (about 70 DIP) is narrower than the normal text.
+    const bool compact = width < s.textOnlyWidth;
+    if (compact && (s.compactWidth <= 0 || width < s.compactWidth)) return p;
+    const bool graph = !compact && wantGraph && width >= s.fullWidth;
     const int height = graph ? 2 * s.height : s.height;
     const int bottom = g.tray.top - margin;
     const int top = bottom - height;
     if (!g.occupied.Empty() && top < g.occupied.bottom + margin) return p;
     p.visible = true;
     p.showGraph = graph;
+    p.compact = compact;
     p.rect = {g.taskbar.left + margin, top, g.taskbar.right - margin, bottom};
     return p;
 }

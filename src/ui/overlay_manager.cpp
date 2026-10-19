@@ -148,16 +148,31 @@ void OverlayManager::Update(std::optional<Speed> speed, const SpeedHistory& hist
     if (!initialized_) return;
     ++ticksSinceProbe_;
 
-    unsigned work = kShell | kZOrder;
     const bool barsAlive = std::all_of(bars_.begin(), bars_.end(), [](const auto& b) { return IsWindow(b->info.hwnd); });
-    if (FindWindowW(L"Shell_TrayWnd", nullptr) != taskbar_ || !barsAlive) {
-        work |= kRebuild;  // Explorer exited or restarted (TaskbarCreated covers the restart too)
-    } else if (AnyShown() && (probeDue_ || ticksSinceProbe_ >= 2)) {
-        work |= kFullProbe;  // the UIA extent is refreshed every 2 s, and only while an overlay is shown
-    } else if (taskbar_ && bars_.empty() && ticksSinceProbe_ >= 2) {
-        work |= kLightProbe;  // nothing to show yet (e.g. no tray): watch for a taskbar that qualifies
-    }
+    const TickPlan plan = PlanTick(FindWindowW(L"Shell_TrayWnd", nullptr) != taskbar_ || !barsAlive, AnyShown(),
+                                   probeDue_, ticksSinceProbe_, taskbar_ != nullptr, !bars_.empty());
+    unsigned work = kShell | kZOrder;
+    if (plan.rebuild) work |= kRebuild;
+    if (plan.fullProbe) work |= kFullProbe;
+    if (plan.lightProbe) work |= kLightProbe;
+    if (plan.followTaskbars) work |= kTaskbarMoved;
     Run(work);
+}
+
+TickPlan PlanTick(bool explorerChanged, bool anyShown, bool probeDue, unsigned ticksSinceProbe, bool haveTaskbar,
+                  bool haveBars) {
+    TickPlan p;
+    if (explorerChanged) {
+        p.rebuild = true;  // Explorer exited or restarted (TaskbarCreated covers the restart too)
+        return p;
+    }
+    if (anyShown && (probeDue || ticksSinceProbe >= 2)) {
+        p.fullProbe = true;  // the UIA extent is refreshed every 2 s, and only while an overlay is shown
+    } else if (haveTaskbar && !haveBars && ticksSinceProbe >= 2) {
+        p.lightProbe = true;  // nothing to show yet (e.g. no tray): watch for a taskbar that qualifies
+    }
+    p.followTaskbars = haveBars;  // catches the auto-hide slide, which raises no location event
+    return p;
 }
 
 void OverlayManager::SetTooltip(const std::wstring& text) {
@@ -442,8 +457,8 @@ void OverlayManager::RenderBar(Bar& bar) {
         bar.window.Hide();
         return;
     }
-    const OverlayContent content{speed_, options_.units, options_.letters, bar.placement.showGraph,
-                                 history_,  light_,         bar.info.geom.dpi};
+    const OverlayContent content{speed_,   options_.units, options_.letters,  bar.placement.showGraph,
+                                 history_, light_,         bar.info.geom.dpi, bar.placement.compact};
     bar.window.Show(bar.placement, content);
 
     const SIZE size{bar.placement.rect.Width(), bar.placement.rect.Height()};

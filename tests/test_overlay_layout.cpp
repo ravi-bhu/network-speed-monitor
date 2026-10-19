@@ -63,3 +63,44 @@ TEST_CASE("IsFullscreenOnMonitor: covers monitor, not maximized, not shell") {
     CHECK(!IsFullscreenOnMonitor({-8, -8, 1928, 1048}, {0, 0, 1920, 1080}, false));
     CHECK(!IsFullscreenOnMonitor({0, 0, 1920, 1080}, {0, 0, 1920, 1080}, true));
 }
+
+TEST_CASE("PlaceOverlay: default-width vertical taskbar falls back to the compact layout (#30)") {
+    // Left taskbar 70 px wide at 96 dpi: 62 px usable. Normal text needs 72, compact 52.
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {0, 0, 70, 1080}, {0, 900, 70, 1080}, {}, Edge::Left, 96};
+    OverlaySizes s{140, 72, 40};
+    s.compactWidth = 52;
+    auto p = PlaceOverlay(g, s, true);
+    CHECK(p.visible);
+    CHECK(p.compact);
+    CHECK(!p.showGraph);
+    CHECK(p.rect == Rect{4, 856, 66, 896});
+}
+
+TEST_CASE("PlaceOverlay: compact is only used when the normal text doesn't fit (#30)") {
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {0, 0, 90, 1080}, {0, 900, 90, 1080}, {}, Edge::Left, 96};
+    OverlaySizes s{140, 72, 40};
+    s.compactWidth = 52;
+    auto p = PlaceOverlay(g, s, true);
+    CHECK(p.visible);
+    CHECK(!p.compact);
+}
+
+TEST_CASE("PlaceOverlay: too narrow even for compact hides; no compact size means no compact (#30)") {
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {0, 0, 50, 1080}, {0, 900, 50, 1080}, {}, Edge::Left, 96};
+    OverlaySizes s{140, 72, 40};
+    s.compactWidth = 52;
+    CHECK(!PlaceOverlay(g, s, true).visible);
+    TaskbarGeometry g70 = g;
+    g70.taskbar.right = 70;
+    g70.tray.right = 70;
+    CHECK(!PlaceOverlay(g70, {140, 72, 40}, true).visible);  // compactWidth 0: no compact layout
+}
+
+TEST_CASE("PlaceOverlay: crowded horizontal taskbar tries compact before hiding (#30)") {
+    OverlaySizes s{150, 90, 40};
+    s.compactWidth = 60;
+    auto p = PlaceOverlay(G(Edge::Bottom, {0, 1040, 1620, 1080}), s, true);  // 72 px free
+    CHECK(p.visible);
+    CHECK(p.compact);
+    CHECK(p.rect == Rect{1636, 1040, 1696, 1080});
+}
