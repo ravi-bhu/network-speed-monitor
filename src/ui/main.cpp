@@ -7,6 +7,7 @@
 #include "core/speed_history.h"
 #include "platform/strings.h"
 #include "resource.h"
+#include "ui/app.h"
 #include "ui/overlay_manager.h"
 
 namespace nsm {
@@ -138,5 +139,6 @@ bool HasArg(const wchar_t* wanted) {
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     if (nsm::HasArg(L"--demo")) return nsm::RunDemo(inst);
-    return 0;  // The real app (sampling, menu, report) is wired up in a later task.
+    nsm::App app;
+    return app.Run(inst, GetCommandLineW());
 }

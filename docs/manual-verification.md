@@ -83,3 +83,28 @@ Already checked automatically on Windows 10 22H2 (build 19045, 125% scaling, dar
 ## Task 8
 
 - [ ] **Win11 24H2+ VM, location services OFF:** run the app on Wi-Fi and confirm `QueryAdapterNetworks()` still returns the Wi-Fi network name (the NLM name, not WLAN API). If the name comes back empty, the UI (Task 15) must show "Unknown Wi-Fi network" and must not prompt for location. Record the result.
+
+## Task 13: App shell (live speeds, recording, menu, power)
+
+Run `build\src\ui\Debug\NetworkSpeedMonitor.exe` (no arguments). It writes the `HKCU\...\Run` value `NetworkSpeedMonitor` and creates `%LOCALAPPDATA%\NetworkSpeedMonitor\usage.db` and `settings.ini`. End it with menu > Exit or `taskkill /im NetworkSpeedMonitor.exe` (**without** `/f`). Debug builds accept `--trace <file>`, which writes one CSV line per tick (`utc,mono,display_id,internet_id,valid,rx_Bps,tx_Bps`) for checks like the parity test below.
+
+Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125%, dark taskbar at the bottom, one monitor, Wi-Fi). Screen captures were taken with `SetProcessDPIAware`.
+- Speed parity: with a download running, the app's displayed ↓ (from `--trace`) averaged over 60 s was within 1.6% of `Get-Counter '\Network Interface(<Wi-Fi adapter>)\Bytes Received/sec'` (1,266,901 vs 1,286,992 B/s).
+- The overlay shows real speeds; the tooltip reads "Automatic: Wi-Fi", and "Ethernet" when Ethernet is pinned.
+- The right-click menu shows Adapter (Automatic + every listed adapter, current one checked), Units (Bits/Bytes radio), Show graph, Use letters (U/D), Open report… (bold default), Settings…, Exit. Choosing Use letters, Bits or a pinned adapter changes the overlay at once and is written to `settings.ini`.
+- A second launch exits with code 0 in about 0.15 s; there is still one process, one app window and one overlay.
+- `usage.db` is written every 5 minutes and at the UTC hour boundary: in a 19-minute run the writes landed 300, 600 and 900 s after start, then at 03:00:00 UTC. The database runs in WAL mode, so between checkpoints the write lands in `usage.db-wal`; `usage.db` itself changes at a checkpoint or exit. Use `[IO.File]::GetLastWriteTime` rather than `Get-ChildItem`, whose directory entry for a file another process holds open can be stale.
+- A `WM_POWERBROADCAST`/`PBT_APMSUSPEND` and a `WM_QUERYENDSESSION` sent to the app window each wrote the pending usage at once. `WM_ENDSESSION` (TRUE) wrote it, saved `settings.ini` and ended the process.
+- While it runs the Win10 task list ends at 1480, left of the readout at 1485..1644. After `taskkill` (no `/f`) it's back to 180..1649.
+- CPU: about 0.04% of the machine (8 logical CPUs) in both Debug (60 s) and Release (30 s). Release private working set 3.9 MB (private bytes 6.3 MB).
+
+### Windows 10 / 11
+- [ ] **Download parity by eye:** start a large download and compare the overlay's ↓ with Task Manager > Performance > the same adapter over 60 s. They agree within about 5%.
+- [ ] **Wi-Fi ↔ Ethernet:** with both available, unplug Ethernet or turn Wi-Fi off. In Automatic mode the readout switches to the other adapter within 2 s and the tooltip changes to "Automatic: <adapter>".
+- [ ] **VPN pinned, then disconnected:** connect a VPN, pin it in Adapter, then disconnect. The readout shows `—` for both lines and does not fall back to Automatic. Reconnect: the speed comes back.
+- [ ] **VPN in Automatic:** connecting a full-tunnel VPN switches the readout and tooltip to the VPN adapter; disconnecting switches back.
+- [ ] **Sleep and resume:** sleep for 2 minutes and resume. The readout shows no spike, and the next report (Task 15) shows the traffic as usual.
+- [ ] **Sign out with the app running:** after signing back in, the task list has its full width and no usage is lost (the usage written just before sign-out is in the report).
+- [ ] **A new Wi-Fi network:** join a network the PC hasn't seen. Within about 10 s the usage is recorded under that network (Windows names a new network a few seconds after it connects; the app re-reads networks 10 s after each change).
+- [ ] **Start with Windows:** sign out and in; the app starts and shows the readout.
+- [ ] **Windows 11 VM:** the menu, tooltip and a second launch behave as above.

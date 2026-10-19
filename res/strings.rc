@@ -8,4 +8,18 @@ BEGIN
     IDS_LABEL_UP "U:"
     IDS_LABEL_DOWN "D:"
     IDS_NO_VALUE "—"
+
+    IDS_TIP_AUTO "Automatic: %s"
+    IDS_TIP_AUTO_NONE "Automatic: not connected"
+
+    IDS_MENU_ADAPTER "Adapter"
+    IDS_MENU_AUTOMATIC "Automatic"
+    IDS_MENU_UNITS "Units"
+    IDS_MENU_BITS "Bits"
+    IDS_MENU_BYTES "Bytes"
+    IDS_MENU_SHOW_GRAPH "Show graph"
+    IDS_MENU_LETTERS "Use letters (U/D)"
+    IDS_MENU_OPEN_REPORT "Open report…"
+    IDS_MENU_SETTINGS "Settings…"
+    IDS_MENU_EXIT "Exit"
 END
