@@ -28,58 +28,165 @@
   const fmtBits = (bytesPerSec) => scale(bytesPerSec * 8, ["bps", "Kbps", "Mbps", "Gbps"]); // FormatSpeed, bits
   const volume = (bytes) => scale(bytes, ["B", "KB", "MB", "GB", "TB"]); // FormatVolume
 
-  // ---- Report replica (reusable): fills every [data-report-example] with the Summary tab ----
+  // ---- Report replica (reusable): fills every [data-report-example] with the report's four tabs ----
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  // Example totals in bytes for a fixed example month, so they agree with each other on any day.
-  // Plausible for one home PC; not real data.
+  // Example data for a fixed month, so every number agrees with the others on any day. Plausible for one
+  // home PC; not real data. Volumes are in GB (1 GB = 1e9 bytes) as [received, sent].
   const EXAMPLE = {
     year: 2026, monthIndex: 9, // October 2026 (months count from 0)
-    today: { rx: 2.61e9, tx: 0.254e9 },
-    week: { rx: 13.1e9, tx: 1.12e9 },
-    month: { rx: 45.02e9, tx: 3.71e9 },
-    busiest: { day: 16, rx: 6.21e9, tx: 0.63e9 },
-    adapters: [["Wi-Fi", 42.3e9], ["Ethernet", 6.4e9], ["vEthernet (WSL)", 1.18e9]],
-    networks: [["HomeNet-5G", 38.9e9], ["Office", 2.95e9], ["Library guest", 0.412e9]],
+    today: 23, weekStart: 19,  // "today" is Friday 23 October; the week started on Monday 19 October
+    // Internet traffic per day, 1 October to today. The rest of the month has no traffic yet.
+    days: [
+      [1.42, 0.16], [1.88, 0.21], [3.10, 0.19], [3.46, 0.22], [1.25, 0.14], [1.61, 0.31], [0.94, 0.08],
+      [1.70, 0.18], [2.05, 0.24], [2.87, 0.17], [3.92, 0.25], [1.33, 0.29], [1.58, 0.15], [1.47, 0.14],
+      [1.76, 0.33], [6.21, 0.63], [3.35, 0.21], [2.98, 0.19], [1.52, 0.27], [1.81, 0.30], [1.39, 0.14],
+      [2.14, 0.22], [1.12, 0.11],
+    ],
+    // Each adapter's own traffic this month: name, type (IDS_KIND_*), received, sent. Wi-Fi plus Ethernet is
+    // the internet total; the VPN runs over the Wi-Fi, so its traffic counts twice (IDS_NOTE_RAW).
+    adapters: [["Wi-Fi", "Wi-Fi", 44.37, 4.41], ["Ethernet", "Ethernet", 6.49, 0.72], ["Work VPN", "Virtual", 2.84, 0.61]],
+    // The Wi-Fi adapter's traffic by network; adds up to the Wi-Fi row.
+    networks: [["Home-5G", 39.12, 3.58], ["Office", 4.78, 0.76], ["Café guest", 0.47, 0.07]],
   };
+  const GB = 1e9;
+  const totals = (pairs) => pairs.reduce((t, [rx, tx]) => ({ rx: t.rx + rx * GB, tx: t.tx + tx * GB }), { rx: 0, tx: 0 });
+  const sum = (t) => t.rx + t.tx;
+
+  // ChooseAxis (report_paint.cpp): the smallest 1/2/2.5/5 x 10^k step covering max in at most 4 steps.
+  function chooseAxis(max, maxSteps = 4) {
+    const raw = max / maxSteps;
+    for (let decade = 1; ; decade *= 10) {
+      const m = [1, 2, 2.5, 5].find((k) => k * decade >= raw && Number.isInteger(k * decade));
+      if (m) { const step = m * decade; return { step, steps: Math.max(1, Math.ceil(max / step)) }; }
+    }
+  }
+
+  const TABS = ["Summary", "Timeline", "Adapters", "Wi-Fi networks"]; // IDS_TAB_*
+  let reports = 0;
 
   function renderReport(root) {
+    const id = "report-" + reports++;
     const { year, monthIndex: month } = EXAMPLE;
-    const date = (d) => d.toLocaleDateString();
-    const monthFirst = new Date(year, month, 1);
-    const monthLast = new Date(year, month + 1, 0);
-    const busiest = new Date(year, month, EXAMPLE.busiest.day);
-    const longDate = busiest.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const days = EXAMPLE.days.map(([rx, tx], i) => ({ day: i + 1, rx: rx * GB, tx: tx * GB }));
+    const today = days[EXAMPLE.today - 1];
+    const week = totals(EXAMPLE.days.slice(EXAMPLE.weekStart - 1, EXAMPLE.today));
+    const monthTotal = totals(EXAMPLE.days);
+    const busiest = days.reduce((a, d) => (sum(d) > sum(a) ? d : a)); // the earliest wins a tie
+    const adapters = EXAMPLE.adapters.map(([name, kind, rx, tx]) => ({ name, kind, rx: rx * GB, tx: tx * GB }));
+    const networks = EXAMPLE.networks.map(([name, rx, tx]) => ({ name, rx: rx * GB, tx: tx * GB }));
+    for (const list of [adapters, networks]) list.sort((a, b) => sum(b) - sum(a)); // by Total, largest first
+
+    const dateOf = (day) => new Date(year, month, day);
+    const longDate = (day) => dateOf(day).toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+    const lastDay = new Date(year, month + 1, 0).getDate();
 
     // IDS_RX_TX "↓ %s · ↑ %s", with a spoken version.
     const detail = (t) =>
       `<span class="r-muted" aria-hidden="true">↓ ${volume(t.rx)} · ↑ ${volume(t.tx)}</span>` +
       `<span class="vh">Received ${volume(t.rx)}, sent ${volume(t.tx)}</span>`;
+
+    // Summary
     const card = (title, t, on) =>
       `<div class="r-card${on ? " is-on" : ""}"><span class="r-muted">${esc(title)}</span>` +
-      `<span class="r-value">${volume(t.rx + t.tx)}</span>${detail(t)}</div>`;
+      `<span class="r-value">${volume(sum(t))}</span>${detail(t)}</div>`;
     const row = (label, value, muted) =>
       `<div class="r-row"><span${muted ? ' class="r-muted"' : ""}>${label}</span><span>${value}</span></div>`;
     const panel = (title, rows) => `<div class="r-panel"><p class="r-panel-title">${esc(title)}</p>${rows.join("")}</div>`;
-    const b = EXAMPLE.busiest;
+    const summary =
+      `<div class="r-cards">${card("Today", today)}${card("This week", week)}` +
+      `${card("This month", monthTotal)}${card("This month", monthTotal, true)}</div>` +
+      `<div class="r-panels">` +
+      panel("Busiest day", [row(esc(longDate(busiest.day)), volume(sum(busiest))), row(detail(busiest), "", true)]) +
+      panel("Top adapters", adapters.slice(0, 3).map((a) => row(esc(a.name), volume(sum(a))))) +
+      panel("Top Wi-Fi networks", networks.slice(0, 3).map((n) => row(esc(n.name), volume(sum(n))))) +
+      `</div>` +
+      `<p class="r-note">Usage is recorded only while Network Speed Monitor is running.</p>`;
 
+    // Timeline: one bar per day of the month (Granularity::Day), received at the bottom, sent stacked on top.
+    // Hovering a bar shows the app's tooltip text (BarTitle, then IDS_TIP_RECEIVED / SENT / TOTAL).
+    const axis = chooseAxis(sum(busiest));
+    const axisMax = axis.step * axis.steps;
+    const pct = (v) => (100 * v / axisMax).toFixed(3) + "%";
+    let grid = "", yLabels = "", bars = "", xLabels = "";
+    for (let k = 0; k <= axis.steps; k++) {
+      const at = pct(axis.step * k);
+      grid += `<i class="r-grid${k ? "" : " r-base"}" style="bottom:${at}"></i>`;
+      yLabels += `<span style="bottom:${at}">${volume(axis.step * k)}</span>`;
+    }
+    for (let day = 1; day <= lastDay; day++) {
+      const d = days[day - 1] || { rx: 0, tx: 0 };
+      const tip = `${longDate(day)}\nReceived: ${volume(d.rx)}\nSent: ${volume(d.tx)}\nTotal: ${volume(sum(d))}`;
+      bars += `<span class="r-slot" title="${esc(tip)}">` + (sum(d) > 0
+        ? `<span class="r-col" style="height:${pct(sum(d))}"><span class="r-tx" style="flex-grow:${d.tx}"></span><span class="r-rx" style="flex-grow:${d.rx}"></span></span>`
+        : "") + `</span>`;
+      // AxisLabels: "MMM d" on the first bar, then the day number; LabelStep thins them to one a week.
+      const label = day === 1 ? dateOf(day).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : String(day);
+      xLabels += `<span>${(day - 1) % 7 === 0 ? esc(label) : ""}</span>`;
+    }
+    const monthName = dateOf(1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    const timeline =
+      `<div class="r-legend"><span><i class="r-sw r-rx"></i>Received</span><span><i class="r-sw r-tx"></i>Sent</span></div>` +
+      `<div class="r-chart" role="img" aria-label="${esc(`Daily usage for ${monthName}, example data. Busiest day ${longDate(busiest.day)}, ${volume(sum(busiest))}.`)}">` +
+      `<div class="r-y">${yLabels}</div>` +
+      `<div class="r-plot">${grid}${bars}</div>` +
+      `<div class="r-x">${xLabels}</div></div>`;
+
+    // Adapters and Wi-Fi networks: list views sorted by Total, largest first (the default TableSort).
+    const table = (label, cols, rows) =>
+      `<div class="r-table-wrap"><table class="r-table" aria-label="${esc(label)}"><thead><tr>` +
+      cols.map((c, i) => {
+        const sorted = i === cols.length - 1;
+        return `<th scope="col"${c.num ? ' class="r-num"' : ""}${sorted ? ' aria-sort="descending"' : ""}>` +
+          `${sorted ? '<i class="r-sort" aria-hidden="true"></i>' : ""}${esc(c.name)}</th>`;
+      }).join("") +
+      `</tr></thead><tbody>` +
+      rows.map((r) => `<tr>${cols.map((c) => `<td${c.num ? ' class="r-num"' : ""}>${esc(c.get(r))}</td>`).join("")}</tr>`).join("") +
+      `</tbody></table></div>`;
+    const nameCol = { name: "Name", get: (r) => r.name };
+    const numberCols = [
+      { name: "Received", num: true, get: (r) => volume(r.rx) },
+      { name: "Sent", num: true, get: (r) => volume(r.tx) },
+      { name: "Total", num: true, get: (r) => volume(sum(r)) },
+    ];
+    const rawNote = `<p class="r-raw">Each row is that adapter's or network's own traffic, so rows can add up to more than your internet total (a VPN and the Wi-Fi it runs over both count).</p>`;
+    const adaptersTab = rawNote +
+      `<p class="r-check" aria-hidden="true"><i></i>Show hidden adapters</p>` +
+      table("Adapters", [nameCol, { name: "Type", get: (r) => r.kind }, ...numberCols], adapters);
+    const wifiTab = rawNote + table("Wi-Fi networks", [nameCol, ...numberCols], networks);
+
+    const pages = [summary, timeline, adaptersTab, wifiTab];
     root.innerHTML =
       `<p class="vh">Example data.</p>` +
       `<div class="r-bar"><span>Period:</span><span class="r-combo">This month</span>` +
-      `<span class="r-range">${esc(date(monthFirst))} – ${esc(date(monthLast))}</span>` +
+      `<span class="r-range">${esc(dateOf(1).toLocaleDateString())} – ${esc(dateOf(lastDay).toLocaleDateString())}</span>` +
       `<span class="r-btns" aria-hidden="true"><span class="r-btn">Export CSV…</span><span class="r-btn">Clear all history…</span></span></div>` +
-      `<div class="r-tabs" aria-hidden="true"><span class="is-on">Summary</span><span>Timeline</span><span>Adapters</span><span>Wi-Fi networks</span></div>` +
-      `<div class="r-page">` +
-      `<div class="r-cards">${card("Today", EXAMPLE.today)}${card("This week", EXAMPLE.week)}` +
-      `${card("This month", EXAMPLE.month)}${card("This month", EXAMPLE.month, true)}</div>` +
-      `<div class="r-panels">` +
-      panel("Busiest day", [row(esc(longDate), volume(b.rx + b.tx)), row(detail(b), "", true)]) +
-      panel("Top adapters", EXAMPLE.adapters.map(([n, v]) => row(esc(n), volume(v)))) +
-      panel("Top Wi-Fi networks", EXAMPLE.networks.map(([n, v]) => row(esc(n), volume(v)))) +
-      `</div>` +
-      `<p class="r-note">Usage is recorded only while Network Speed Monitor is running.</p>` +
+      `<div class="r-tabs" role="tablist" aria-label="Report">` +
+      TABS.map((t, i) => `<button type="button" role="tab" id="${id}-tab${i}" aria-controls="${id}-page${i}" ` +
+        `aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${esc(t)}</button>`).join("") +
+      `</div><div class="r-pages">` +
+      pages.map((p, i) => `<div class="r-page" role="tabpanel" id="${id}-page${i}" aria-labelledby="${id}-tab${i}" tabindex="0"${i ? " hidden" : ""}>${p}</div>`).join("") +
       `</div>`;
+
+    // Tabs: click, or Left/Right/Home/End with a roving tabindex; selection follows focus.
+    const tabs = [...root.querySelectorAll('[role="tab"]')];
+    const panels = [...root.querySelectorAll('[role="tabpanel"]')];
+    const select = (n) => tabs.forEach((t, i) => {
+      t.setAttribute("aria-selected", String(i === n));
+      t.tabIndex = i === n ? 0 : -1;
+      panels[i].hidden = i !== n;
+    });
+    tabs.forEach((t, i) => t.addEventListener("click", () => select(i)));
+    root.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
+      const i = tabs.indexOf(document.activeElement);
+      const n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+      if (i < 0 || n === undefined) return;
+      e.preventDefault();
+      const next = (n + tabs.length) % tabs.length;
+      select(next);
+      tabs[next].focus();
+    });
   }
   document.querySelectorAll("[data-report-example]").forEach(renderReport);
 
@@ -87,7 +194,7 @@
 
   const readout = $("readout");
   if (!readout) return;
-  const menu = $("menu"), report = $("report"), note = $("note"), taskbar = $("taskbar");
+  const menu = $("menu"), report = $("report-popup"), note = $("note"), taskbar = $("taskbar");
   const showMenuBtn = $("show-menu"), controls = document.querySelector(".stage-controls");
   const lines = readout.querySelector(".lines");
 

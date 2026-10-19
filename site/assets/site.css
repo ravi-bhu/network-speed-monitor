@@ -238,7 +238,7 @@ main.home { padding-block: 0; }
    Sizes are in em of a 12 DIP base (the window's message font), so font-size scales the whole window. */
 .report {
   --r-bg: #ffffff; --r-surface: #f5f5f5; --r-border: #e0e0e0; --r-text: #1a1a1a; --r-muted: #5f5f5f;
-  --r-received: #0067c0; --r-sent: #b35c00; --r-accent: #0067c0;
+  --r-received: #0067c0; --r-sent: #b35c00; --r-accent: #0067c0; --r-grid: #e6e6e6;
   --r-control: #e1e1e1; --r-control-edge: #adadad; --r-field: #ffffff; --r-field-edge: #7a7a7a;
   font-family: "Segoe UI", system-ui, "Atkinson Hyperlegible Next", sans-serif;
   font-size: 13px; line-height: 1.36;
@@ -247,8 +247,15 @@ main.home { padding-block: 0; }
 }
 .report.report-dark {
   --r-bg: #202020; --r-surface: #2b2b2b; --r-border: #3d3d3d; --r-text: #ffffff; --r-muted: #a0a0a0;
-  --r-received: #5eb8f0; --r-sent: #f0a35e; --r-accent: #5eb8f0;
+  --r-received: #5eb8f0; --r-sent: #f0a35e; --r-accent: #5eb8f0; --r-grid: #353535;
   --r-control: #333333; --r-control-edge: #6b6b6b; --r-field: #383838; --r-field-edge: #6b6b6b;
+}
+@media (prefers-color-scheme: dark) { /* .report-auto follows the page's colour scheme; same values as above */
+  .report.report-auto {
+    --r-bg: #202020; --r-surface: #2b2b2b; --r-border: #3d3d3d; --r-text: #ffffff; --r-muted: #a0a0a0;
+    --r-received: #5eb8f0; --r-sent: #f0a35e; --r-accent: #5eb8f0; --r-grid: #353535;
+    --r-control: #333333; --r-control-edge: #6b6b6b; --r-field: #383838; --r-field-edge: #6b6b6b;
+  }
 }
 .report :focus-visible { outline-color: var(--r-accent); }
 .report-title { display: flex; align-items: center; flex: none; padding-left: 1em; height: 2.6em; }
@@ -266,13 +273,23 @@ main.home { padding-block: 0; }
   padding: .2em .5em; background: var(--r-field); border: 1px solid var(--r-field-edge);
 }
 .r-combo::after { content: ""; width: .45em; height: .45em; border: solid currentColor; border-width: 0 1px 1px 0; transform: translateY(-.15em) rotate(45deg); }
-.r-range { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.r-range { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--r-muted); }
 .r-btns { display: flex; gap: .667em; margin-left: auto; }
 .r-btn { padding: .2em .9em; background: var(--r-control); border: 1px solid var(--r-control-edge); white-space: nowrap; }
-.r-tabs { display: flex; margin-top: .667em; border-bottom: 1px solid var(--r-border); overflow: hidden; }
-.r-tabs span { padding: .45em .9em; color: var(--r-muted); white-space: nowrap; }
-.r-tabs .is-on { color: var(--r-text); background: var(--r-surface); box-shadow: inset 0 -2px var(--r-accent); }
-.r-page { margin-top: .667em; }
+/* Tab strip as PaintTabs draws it: the selected tab gets the surface fill and a 2 DIP accent bar. */
+.r-tabs { display: flex; margin-top: .667em; border-bottom: 1px solid var(--r-border); overflow-x: auto; scrollbar-width: none; }
+.r-tabs button {
+  flex: none; padding: .45em .9em; border: 0; background: none; color: var(--r-muted);
+  font: inherit; white-space: nowrap; cursor: pointer;
+}
+.r-tabs button:hover { color: var(--r-text); }
+.r-tabs [aria-selected="true"] { color: var(--r-text); background: var(--r-surface); box-shadow: inset 0 -2px var(--r-accent); }
+.r-tabs button:focus-visible { outline: 2px solid var(--r-accent); outline-offset: -2px; border-radius: 0; }
+/* Every page shares one grid cell, so on wide screens the window keeps the height of its tallest page. */
+.r-pages { display: grid; }
+.r-page { grid-area: 1 / 1; margin-top: .667em; min-width: 0; }
+.r-page[hidden] { display: block; visibility: hidden; }
+.r-page:focus-visible { outline: 2px solid var(--r-accent); outline-offset: 2px; }
 .r-cards, .r-panels { display: grid; grid-template-columns: repeat(var(--r-cols, 4), minmax(0, 1fr)); gap: 1em; }
 .r-panels { --r-cols: 3; margin-top: 1.333em; }
 .r-card, .r-panel { background: var(--r-surface); border: 1px solid var(--r-border); border-radius: .5em; padding: 1em; min-width: 0; }
@@ -286,8 +303,84 @@ main.home { padding-block: 0; }
 .r-row > span:last-child { flex: none; }
 .r-note { margin: 1.333em 0 0; color: var(--r-muted); }
 
+/* Timeline (PaintTimeline): legend, Y labels from ChooseAxis, gridlines, stacked day bars at 70% of their slot. */
+.r-legend { display: flex; gap: 1.667em; }
+.r-legend span { display: inline-flex; align-items: center; gap: .5em; }
+.r-sw { display: block; width: 10px; height: 10px; }
+.r-sw.r-rx, .r-col .r-rx { background: var(--r-received); }
+.r-sw.r-tx, .r-col .r-tx { background: var(--r-sent); }
+.r-chart {
+  display: grid; grid-template-columns: 4.5em minmax(0, 1fr); grid-template-rows: 14em auto;
+  column-gap: .667em; margin-top: 1.333em; padding: .5em 4px 0 0;
+}
+.r-y { position: relative; color: var(--r-muted); }
+.r-y span { position: absolute; right: 0; transform: translateY(50%); white-space: nowrap; }
+.r-plot { position: relative; display: flex; align-items: flex-end; }
+.r-grid { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--r-grid); }
+.r-grid.r-base { border-color: var(--r-border); }
+.r-slot { position: relative; flex: 1 1 0; height: 100%; display: flex; align-items: flex-end; justify-content: center; }
+.r-slot:hover { background: var(--r-surface); }
+.r-col { display: flex; flex-direction: column; width: 70%; }
+.r-col > span { flex-basis: 0; }
+.r-x { grid-column: 2; display: flex; margin-top: .333em; color: var(--r-muted); }
+.r-x span { flex: 1 1 0; display: flex; justify-content: center; white-space: nowrap; min-width: 0; }
+
+/* Adapters and Wi-Fi networks: report-style list views; the raw-traffic note above them is muted. */
+.r-raw { margin: 0; color: var(--r-muted); }
+.r-check { display: flex; align-items: center; gap: .4em; margin: .667em 0 .333em; }
+.r-check i { width: 13px; height: 13px; border: 1px solid var(--r-field-edge); background: var(--r-field); }
+.r-table-wrap { margin-top: .667em; overflow-x: auto; }
+.r-table { width: 100%; border-collapse: collapse; white-space: nowrap; }
+.r-table th { position: relative; padding: .3em .6em; font-weight: 400; text-align: left; border-bottom: 1px solid var(--r-border); }
+.r-table th + th { border-left: 1px solid var(--r-border); }
+.r-table td { padding: .25em .6em; }
+.r-table .r-num { text-align: right; width: 7.5em; }
+.r-table th:nth-child(2):not(.r-num) { width: 6.5em; } /* the Type column */
+.r-sort { /* HDF_SORTDOWN: a small caret along the header's top edge */
+  position: absolute; top: 1px; left: 50%; width: .4em; height: .4em; transform: translateX(-50%) rotate(45deg);
+  border: solid var(--r-muted); border-width: 0 1px 1px 0;
+}
+
 /* The report popup above the taskbar. */
 .popup.report { width: 42rem; max-height: calc(100svh - 40px * var(--s) - 2rem); }
+
+/* ---- Landing sections: one reading column, separated by space and a heading ---- */
+
+.section { padding-top: clamp(4rem, 10vw, 7rem); }
+h2 { margin: 0 0 1.25rem; font-weight: 800; font-size: clamp(1.875rem, 3.4vw, 2.5rem); line-height: 1.08; letter-spacing: -.025em; }
+.section p, .section ul { margin: 0 0 1rem; }
+.section ul { padding-left: 1.25rem; }
+.section li + li { margin-top: .5rem; }
+.section a:not(.btn) { color: var(--ink); text-underline-offset: 3px; }
+.section a:not(.btn):hover { text-decoration-thickness: 2px; }
+.lead { font-size: clamp(1.375rem, 2.6vw, 1.75rem); font-weight: 700; line-height: 1.25; letter-spacing: -.01em; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; overflow-wrap: anywhere; }
+.aside h3 { margin: 0 0 .5rem; font-size: 1rem; color: var(--ink); }
+.aside p { margin: 0 0 .75rem; }
+.aside code { display: block; color: var(--ink); }
+
+/* What it does: a two-column definition list on wide screens. */
+.facts { display: grid; grid-template-columns: 11rem minmax(0, 1fr); margin: 1.75rem 0 0; }
+.facts dt, .facts dd { margin: 0; padding: .9rem 0; border-top: 1px solid var(--rule); }
+.facts dt { font-weight: 700; padding-right: 1.5rem; }
+@media (max-width: 36rem) {
+  .facts { display: block; }
+  .facts dt { padding-bottom: .2rem; }
+  .facts dd { border-top: 0; padding-top: 0; }
+}
+
+/* The in-page report: a window on the page, in the page's own colour scheme. */
+.report-figure { margin: 2.25rem 0; max-width: 54rem; }
+.report-window { font-size: 14px; box-shadow: 0 2px 12px rgba(0, 0, 0, .12); }
+.report-window .report-title { color: var(--r-text); }
+.report-figure figcaption { margin-top: .75rem; font-size: .9rem; color: var(--muted); }
+
+.section .downloads { list-style: none; padding: 0; }
+.downloads li + li { margin-top: .75rem; }
+.downloads a { font-weight: 700; }
+.downloads code { display: block; color: var(--muted); }
 
 @media (max-height: 45rem), (max-width: 50rem) { /* short or narrow screens: keep the taskbar in view */
   .hero-copy { padding-block: .5rem; }
@@ -309,6 +402,8 @@ main.home { padding-block: 0; }
   .r-cards { --r-cols: 2; }
   .r-panels { --r-cols: 1; }
   .r-range { display: none; }
+  .report-window { font-size: 12px; }
+  .r-page[hidden] { display: none; } /* the stacked summary is much taller than the other pages here */
 }
 @media (max-width: 32rem) {
   .hero { --head: 7rem; }

@@ -60,7 +60,7 @@
         </div>
 
         <div class="tb-tray" id="tray">
-          <button class="readout" id="readout" type="button" data-replica aria-haspopup="dialog" aria-controls="report" aria-expanded="false"
+          <button class="readout" id="readout" type="button" data-replica aria-haspopup="dialog" aria-controls="report-popup" aria-expanded="false"
                   aria-label="Network speed readout, simulated. Opens the usage report; Shift+F10 opens the menu.">
             <svg viewBox="0 0 54 28" aria-hidden="true">
               <polyline id="g-rx"/>
@@ -93,7 +93,7 @@
           <button type="button" role="menuitem" tabindex="-1" id="m-exit">Exit</button>
         </div>
 
-        <div class="popup report report-dark" id="report" role="dialog" aria-label="Network usage report, example" data-replica hidden>
+        <div class="popup report report-dark" id="report-popup" role="dialog" aria-label="Network usage report, example" data-replica hidden>
           <div class="report-title">
             <span>Network usage – Network Speed Monitor</span>
             <span class="cap" aria-hidden="true"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span>
@@ -105,6 +105,95 @@
       </div>
     </div>
   </section>
+
+  <div class="wrap">
+    <section class="section" id="what">
+      <div class="read">
+        <h2>What it does</h2>
+        <p>It puts your current upload and download speed on the taskbar, next to the notification area. Left-click it for the usage report; right-click it for the options.</p>
+        <dl class="facts">
+          <dt>The readout</dt>
+          <dd><b class="up">Upload</b> on the top line, <b class="down">download</b> on the bottom, updated every second. An optional graph shows the last minute. It follows your taskbar’s light or dark theme.</dd>
+          <dt>Adapter</dt>
+          <dd>Automatic mode follows whichever adapter carries your internet traffic. You can also pin one adapter and see only its traffic.</dd>
+          <dt>Units</dt>
+          <dd>Bytes per second by default, or bits. Arrows, or the letters U and D.</dd>
+          <dt>Taskbars</dt>
+          <dd>The primary taskbar only, or every taskbar if you use more than one monitor.</dd>
+          <dt>Start with Windows</dt>
+          <dd>On by default. You can turn it off in Settings… on the right-click menu.</dd>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section" id="report">
+      <div class="read">
+        <h2>The usage report</h2>
+        <p>Left-click the readout to see how much data you’ve used. Pick a period, from today to all time or a custom range, and see it four ways: a summary, a day-by-day timeline, and totals for each adapter and each Wi-Fi network. Export CSV… saves the period to a file.</p>
+      </div>
+      <figure class="report-figure">
+        <div class="report report-auto report-window" role="group" aria-label="Network usage report, example" data-replica>
+          <div class="report-title" aria-hidden="true">
+            <span>Network usage – Network Speed Monitor</span>
+            <span class="cap"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span>
+            <span class="cap"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M.5 .5h9v9h-9z" stroke="currentColor" fill="none"/></svg></span>
+            <span class="cap"><svg viewBox="0 0 10 10" width="10" height="10"><path d="m0 0 10 10M10 0 0 10" stroke="currentColor"/></svg></span>
+          </div>
+          <div class="report-body" data-report-example></div>
+        </div>
+        <figcaption>Example data for October 2026, not from a real PC. The tabs work; the other controls don’t.</figcaption>
+      </figure>
+      <div class="read">
+        <p>It records usage in hourly rows while it runs. Hourly rows are kept for 90 days, then rolled up into one row per day. Traffic while the app isn’t running is not counted, so a day when it was closed shows less than you used.</p>
+        <p>You can rename or hide an adapter, and clear the history of one adapter, one network or everything.</p>
+      </div>
+    </section>
+
+    <section class="section" id="privacy">
+      <h2>Privacy</h2>
+      <p class="lead read">It makes no network connections.</p>
+      <div class="read-grid">
+        <div>
+          <p>It never connects to the internet or to any other computer. It reads the byte counters Windows already keeps for each network adapter, which is all it needs.</p>
+          <ul>
+            <li>No telemetry: no analytics, no crash reports, no update checks, no accounts.</li>
+            <li>Your history and settings stay on your PC, in <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code>, as <code>usage.db</code> and <code>settings.ini</code>.</li>
+            <li>The history holds bytes received and sent per hour, with the adapter’s name and type and the name Windows gives the network, usually the Wi-Fi name. It doesn’t record what you browse, which apps used the traffic, or any content.</li>
+          </ul>
+          <p><a href="privacy.html">The privacy page</a> has the details, including how to delete your data.</p>
+        </div>
+        <aside class="aside" aria-labelledby="check-title">
+          <h3 id="check-title">Check it yourself</h3>
+          <p>The release workflow stops before publishing anything if the app imports one of the Windows networking libraries: ws2_32, winhttp, wininet or urlmon (<a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/tools/check_imports.ps1">the check</a>).</p>
+          <p>To see what it imports, open the Developer Command Prompt that comes with Visual Studio and run:</p>
+          <p><code>dumpbin /imports "%LOCALAPPDATA%\<wbr>Programs\<wbr>NetworkSpeedMonitor\<wbr>NetworkSpeedMonitor.exe"</code></p>
+          <p>You’ll see iphlpapi.dll in the list. The app uses it to read the adapters’ byte counters.</p>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="install">
+      <div class="read">
+        <h2>Install</h2>
+        <p>Version 0.1.0, for Windows 10 or 11. It installs for your user account only, so it doesn’t need administrator rights.</p>
+        <ul class="downloads">
+          <li><a href="https://github.com/ravi-bhu/network-speed-monitor/releases/download/v0.1.0/NetworkSpeedMonitor-0.1.0-x64-setup.exe">Installer for x64</a>, for most PCs <code>NetworkSpeedMonitor-0.1.0-x64-setup.exe</code></li>
+          <li><a href="https://github.com/ravi-bhu/network-speed-monitor/releases/download/v0.1.0/NetworkSpeedMonitor-0.1.0-arm64-setup.exe">Installer for ARM64</a>, for PCs with an ARM processor <code>NetworkSpeedMonitor-0.1.0-arm64-setup.exe</code></li>
+        </ul>
+        <p>Not sure which? Settings &gt; System &gt; About shows it under System type.</p>
+        <p>The installers aren’t code-signed yet. Signing has been applied for through SignPath and starts once it’s approved; until then, Windows SmartScreen may warn you before the installer runs. <a href="verify.html">Verify a download</a> explains the warning and how to check the file against the release’s SHA256 hashes.</p>
+        <p>A winget package is coming once it’s published.</p>
+        <p>To uninstall, use Installed apps in Settings (Apps &amp; features on Windows 10). The uninstaller asks whether to delete your usage history as well; a silent uninstall keeps it.</p>
+      </div>
+    </section>
+
+    <section class="section" id="developers">
+      <div class="read">
+        <h2>For developers</h2>
+        <p>It’s native C++ and Win32, MIT licensed, with a static runtime so there’s nothing else to install. To build it you need Visual Studio 2022 with the C++ workload and CMake 3.25 or newer; the <a href="https://github.com/ravi-bhu/network-speed-monitor#build">README’s Build section</a> has the commands. Before you send a change, read <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>; one of its rules is that the app never gets network code.</p>
+      </div>
+    </section>
+  </div>
 </main>
 
 <div class="wrap">
