@@ -33,9 +33,10 @@ function Get-Imports([string]$Path, [string]$Dumpbin) {
     $out | ForEach-Object { if ($_ -match '^\s{4}(\S+\.dll)\s*$') { $Matches[1].ToLowerInvariant() } } | Sort-Object -Unique
 }
 
-if (-not (Test-Path -LiteralPath $Exe)) { Write-Error "Executable not found: $Exe"; exit 1 }
+function Fail([string]$Msg) { [Console]::Error.WriteLine($Msg); exit 1 }
+if (-not (Test-Path -LiteralPath $Exe)) { Fail "Executable not found: $Exe" }
 $dumpbin = Find-Dumpbin
-if (-not $dumpbin) { Write-Error 'dumpbin.exe not found (not on PATH, and vswhere found no VC tools).'; exit 1 }
+if (-not $dumpbin) { Fail 'dumpbin.exe not found (not on PATH, and vswhere found no VC tools).' }
 
 $imports = @(Get-Imports (Resolve-Path -LiteralPath $Exe).Path $dumpbin)
 Write-Host "Imports of ${Exe}:"
@@ -44,10 +45,10 @@ $bad = @($imports | Where-Object { $forbidden -contains $_ })
 
 if ($SelfTest) {
     if ($bad.Count -gt 0) { Write-Host "SELF-TEST OK: forbidden import detected as expected ($($bad -join ', '))."; exit 0 }
-    Write-Error "SELF-TEST FAILED: $Exe was expected to import a forbidden DLL but none was detected."; exit 1
+    Fail "SELF-TEST FAILED: $Exe was expected to import a forbidden DLL but none was detected."
 }
 if ($bad.Count -gt 0) {
-    Write-Error "FAIL: $Exe imports forbidden networking DLL(s): $($bad -join ', ')"
+    Fail "FAIL: $Exe imports forbidden networking DLL(s): $($bad -join ', ')"
     exit 1
 }
 Write-Host "OK: no networking DLL imported."

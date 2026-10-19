@@ -21,22 +21,32 @@ CI runs both after the Release build (`.github/workflows/ci.yml`); `release.yml`
 
 ## 2. Resource use (`tools/measure.ps1 -Minutes 10`)
 
-Release build, started with no arguments (overlay only), real data folder, 120 samples at 5 s.
+Release build, started with no arguments (overlay only), real data folder, 2026-10-19 10:38.
+Measured pid 25568, `build\src\ui\Release\NetworkSpeedMonitor.exe`, 602.5 s (10.04 min), 117 samples
+(a sample is 5 s of sleep plus the CIM query, so about 5.15 s apart).
 
 | Metric | Result | Budget |
 |---|---|---|
-| Average CPU (share of the whole machine) | 0.031 % | < 0.5 % |
-| Max private bytes | 7.65 MB | <= 15 MB |
-| `usage.db` LastWriteTime changes in 10 min | 0 | <= 2 |
+| Average CPU (share of the whole machine, 8 cores) | 0.027 % | < 0.5 % |
+| Max private bytes | 7.61 MB | <= 15 MB |
+| Write bursts (samples where the process's WriteOperationCount rose) | 2 | <= 2 per 10 min |
+| Total write ops / bytes written in the window | 4 / 8,240 | n/a |
 
-Result: PASS (exit 0). The 0 writes is as expected for an idle overlay: no flush touched
-`usage.db` during the window. The shutdown flush wrote the file when the app was closed afterwards.
+Result: PASS (exit 0), with the write budget exactly met. The two bursts are consistent with the 300 s flush timer
+firing twice in 10 minutes. The shutdown flush is outside the window.
 
-## 3. Network silence
+Why write counts come from the process and not from file times: the database is in WAL mode and NTFS does not
+refresh a file's directory-entry mtime or size while it is held open. In a 6m45s run the `usage.db-wal` entry
+stayed at 32 bytes and its start time throughout, yet `usage.db` was 36,864 bytes after a graceful exit.
+So no mtime or length metric can see flushes. An earlier run of this task that used `usage.db` mtime reported
+0 writes; that figure was an artefact of this and is superseded by the table above.
 
-During the same 10-minute window (169 samples, one every ~3 s, 11 minutes of sampling),
-`Get-NetTCPConnection -OwningProcess <pid>` and `Get-NetUDPEndpoint -OwningProcess <pid>` returned
-nothing: 0 TCP and 0 UDP entries in total.
+## 3. Sockets owned by the process at sampling instants
+
+During the same window (158 samples about every 3 s for 10 minutes, taken by a separate watcher),
+`Get-NetTCPConnection -OwningProcess <pid>` and `Get-NetUDPEndpoint -OwningProcess <pid>` returned nothing: 0 TCP
+and 0 UDP entries in total. This shows no sockets at the sampling instants only; a short-lived connection between
+samples would be missed. The stronger evidence is section 1: the exe does not import any Winsock or HTTP DLL.
 
 ## 4. Test suites (2026-10-19)
 
