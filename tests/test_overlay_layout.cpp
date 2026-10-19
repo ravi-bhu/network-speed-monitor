@@ -104,3 +104,9 @@ TEST_CASE("PlaceOverlay: crowded horizontal taskbar tries compact before hiding 
     CHECK(p.compact);
     CHECK(p.rect == Rect{1636, 1040, 1696, 1080});
 }
+
+TEST_CASE("IsFullscreenOnMonitor: a maximized window over an auto-hidden taskbar is not fullscreen (#31)") {
+    // With auto-hide on, a maximized app's rect covers the whole monitor (borders included).
+    CHECK(!IsFullscreenOnMonitor({-8, -8, 1928, 1088}, {0, 0, 1920, 1080}, false, true));
+    CHECK(IsFullscreenOnMonitor({-8, -8, 1928, 1088}, {0, 0, 1920, 1080}, false, false));  // borderless fullscreen
+}

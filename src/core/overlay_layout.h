@@ -34,6 +34,8 @@ struct OverlayPlacement {
 
 OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, bool wantGraph);
 bool IsTaskbarShown(const Rect& taskbar, const Rect& monitor, Edge edge);
-bool IsFullscreenOnMonitor(const Rect& window, const Rect& monitor, bool windowIsShell);
+// maximizedWindow: a maximized window with a title bar. With an auto-hidden taskbar it covers
+// the whole monitor, but it is an ordinary app, not a fullscreen game or video.
+bool IsFullscreenOnMonitor(const Rect& window, const Rect& monitor, bool windowIsShell, bool maximizedWindow = false);
 
 }  // namespace nsm

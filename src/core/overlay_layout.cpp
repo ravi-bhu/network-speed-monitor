@@ -73,8 +73,8 @@ bool IsTaskbarShown(const Rect& taskbar, const Rect& monitor, Edge edge) {
     return visible * 2 >= thickness;
 }
 
-bool IsFullscreenOnMonitor(const Rect& window, const Rect& monitor, bool windowIsShell) {
-    if (windowIsShell) return false;
+bool IsFullscreenOnMonitor(const Rect& window, const Rect& monitor, bool windowIsShell, bool maximizedWindow) {
+    if (windowIsShell || maximizedWindow) return false;
     return window.left <= monitor.left && window.top <= monitor.top &&
            window.right >= monitor.right && window.bottom >= monitor.bottom;
 }

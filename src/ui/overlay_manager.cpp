@@ -61,10 +61,16 @@ Rect Offset(const Rect& r, int dx, int dy) { return {r.left + dx, r.top + dy, r.
 
 int Margin(unsigned dpi) { return MulDiv(4, static_cast<int>(dpi), 96); }  // as in PlaceOverlay
 
+// A maximized window with a title bar: an ordinary app even when, with an auto-hidden taskbar,
+// it covers the whole monitor. Fullscreen video and games drop the caption.
+bool IsMaximizedWithCaption(HWND hwnd) {
+    return IsZoomed(hwnd) && (GetWindowLongW(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION;
+}
+
 bool StillFullscreen(HWND hwnd, HMONITOR monitor) {
     return IsWindow(hwnd) && IsWindowVisible(hwnd) && !IsIconic(hwnd) &&
            MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL) == monitor &&
-           IsFullscreenOnMonitor(WindowRect(hwnd), MonitorRect(monitor), false);
+           IsFullscreenOnMonitor(WindowRect(hwnd), MonitorRect(monitor), false, IsMaximizedWithCaption(hwnd));
 }
 
 // True if `upper` is above `lower` in the z-order.
@@ -433,7 +439,7 @@ void OverlayManager::EvaluateShell() {
     HMONITOR monitor = MonitorFromWindow(fg, MONITOR_DEFAULTTONULL);
     if (!monitor) return;
     std::erase_if(fullscreen_, [monitor](const auto& e) { return e.first == monitor; });
-    if (IsFullscreenOnMonitor(WindowRect(fg), MonitorRect(monitor), IsShellWindowClass(cls)))
+    if (IsFullscreenOnMonitor(WindowRect(fg), MonitorRect(monitor), IsShellWindowClass(cls), IsMaximizedWithCaption(fg)))
         fullscreen_.emplace_back(monitor, fg);
 }
 
