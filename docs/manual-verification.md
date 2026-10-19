@@ -30,7 +30,16 @@ Found (filed as issues):
 - When the period is This month (or Today or This week), the period card duplicates the matching fixed card.
 - The overlay tooltip didn't appear on synthetic mouse hover. Check it with a real mouse before treating it as a bug.
 
-Not testable on this setup: crowding (the taskbar combines buttons), and everything that needs a settings change, sleep, sign-out or an admin prompt (see the open items below).
+Guided checks (the user changed the setting, then the app was checked by screenshot and window geometry):
+- **Explorer restart:** pass. The readout was back about 4 s after `explorer.exe` was killed (mostly Explorer's own startup), in the same app process. The task list ended 5 px before it.
+- **Tooltip:** shows "Automatic: Wi-Fi" on a real mouse hover. Synthetic hover didn't trigger it. It stays light in dark mode (#29).
+- **Light mode:** pass. Switched live, with no restart, to dark text, ↑ `#B35C00` and ↓ `#0067C0`, readable. The dark-mode "tan" taskbar was wallpaper transparency, not an accent colour, and white text there matches the system clock (#27, closed).
+- **Crowding, Combine: Never:** pass. With 10 and then 25 Notepad windows, the task list stopped at 180..1480 with paging arrows. The readout stayed at 1485..1644 with its graph, with no overlap.
+- **Taskbar at the top:** pass (task list 180..1480, readout 1485..1644, vertically centred).
+- **Left or right at the default width (87 px at 125%): FAIL.** The readout is hidden because the narrowest layout doesn't fit (#30). Widened to 300 px, it works on both sides: the readout sits above the tray with the graph, and the task list reserves room.
+- **Auto-hide: FAIL.** The readout hides with the taskbar but never comes back when the taskbar slides in (8 s observed; #31, release-blocker). It came back when auto-hide was switched off.
+
+Still open on Windows 10: scaling 100/150/175/200%, High Contrast, two monitors, F11/game fullscreen, shell flyouts by hand, sleep/resume, sign-out, the elevated-instance check (F1), the interactive uninstall prompt, Wi-Fi/Ethernet/VPN switching, and Narrator.
 
 ## Task 4: Overlay window on the taskbar (demo data)
 
