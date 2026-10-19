@@ -1,8 +1,8 @@
 ; Network Speed Monitor - per-user installer (Inno Setup 6.3 or newer).
 ;
-; Build one installer per architecture from the repository root:
-;   ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=x64   /DSourceExe=build\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss
-;   ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=arm64 /DSourceExe=build-arm64\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss
+; Build one installer per architecture from the repository root (SourceExe is relative to this installer folder, or use an absolute path):
+;   ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=x64   /DSourceExe=..\build\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss
+;   ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=arm64 /DSourceExe=..\build-arm64\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss
 ; The result is dist\NetworkSpeedMonitor-<version>-<arch>-setup.exe.
 
 #ifndef MyAppVersion
