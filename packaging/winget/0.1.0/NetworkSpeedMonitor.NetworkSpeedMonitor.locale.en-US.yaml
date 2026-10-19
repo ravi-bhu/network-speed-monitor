@@ -1,0 +1,26 @@
+# Template. Replace the {{TOKENS}} before use (see ../README.md).
+PackageIdentifier: NetworkSpeedMonitor.NetworkSpeedMonitor
+PackageVersion: {{VERSION}}
+PackageLocale: en-US
+Publisher: Ravi Bhushan
+PublisherUrl: https://github.com/{{REPO}}
+PublisherSupportUrl: https://github.com/{{REPO}}/issues
+PackageName: Network Speed Monitor
+PackageUrl: https://github.com/{{REPO}}
+License: MIT
+LicenseUrl: https://github.com/{{REPO}}/blob/main/LICENSE
+Copyright: Copyright (c) 2026 Ravi Bhushan
+ShortDescription: Live network speed on the Windows taskbar, with a local usage report.
+Description: A small taskbar readout of your current upload and download speed, with a mini graph. It records usage per adapter and Wi-Fi network on your PC and shows it in a report. It makes no network connections and sends nothing anywhere.
+Moniker: network-speed-monitor
+Tags:
+- network
+- speed
+- bandwidth
+- taskbar
+- monitor
+- usage
+PrivacyUrl: https://github.com/{{REPO}}/blob/main/PRIVACY.md
+ReleaseNotesUrl: https://github.com/{{REPO}}/releases/tag/v{{VERSION}}
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0

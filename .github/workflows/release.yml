@@ -1,0 +1,102 @@
+name: Release
+
+# Runs when a version tag is pushed, e.g. v0.1.0. Builds both architectures, compiles the installers,
+# and publishes a GitHub Release with SHA256SUMS.txt.
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Work out the version and check it matches the tag
+        run: |
+          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $cmake = Select-String -Path CMakeLists.txt -Pattern 'project\(NetworkSpeedMonitor VERSION (\d+\.\d+\.\d+)'
+          $cmakeVersion = $cmake.Matches[0].Groups[1].Value
+          if ($cmakeVersion -ne $version) { throw "Tag $version does not match CMakeLists.txt version $cmakeVersion" }
+          "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Configure x64
+        run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64 "-DNSM_SOURCE_URL=https://github.com/${{ github.repository }}"
+      - name: Build x64 Release
+        run: cmake --build build --config Release
+      - name: Unit tests
+        run: build\tests\Release\nsm_tests.exe -tse="integration"
+      - name: Integration tests
+        run: build\tests\Release\nsm_tests.exe -ts="integration"
+
+      - name: Configure ARM64
+        run: cmake -S . -B build-arm64 -G "Visual Studio 17 2022" -A ARM64 "-DNSM_SOURCE_URL=https://github.com/${{ github.repository }}"
+      - name: Build ARM64 Release
+        run: cmake --build build-arm64 --config Release
+
+      # tools/check_imports.ps1 comes from Task 18 (the no-network import check). This step fails on purpose
+      # if the script is missing, so a release can never skip the check.
+      - name: Check imports (no network DLLs)
+        run: |
+          if (-not (Test-Path tools/check_imports.ps1)) { throw 'tools/check_imports.ps1 is missing; a release must not skip the import check.' }
+          foreach ($exe in 'build\src\ui\Release\NetworkSpeedMonitor.exe', 'build-arm64\src\ui\Release\NetworkSpeedMonitor.exe') {
+            & ./tools/check_imports.ps1 $exe
+            if ($LASTEXITCODE -ne 0) { throw "Import check failed for $exe" }
+          }
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile installers
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          & $iscc "/DMyAppVersion=$env:VERSION" /DMyArch=x64 "/DSourceExe=$PWD\build\src\ui\Release\NetworkSpeedMonitor.exe" installer\NetworkSpeedMonitor.iss
+          if ($LASTEXITCODE -ne 0) { throw 'ISCC failed (x64)' }
+          & $iscc "/DMyAppVersion=$env:VERSION" /DMyArch=arm64 "/DSourceExe=$PWD\build-arm64\src\ui\Release\NetworkSpeedMonitor.exe" installer\NetworkSpeedMonitor.iss
+          if ($LASTEXITCODE -ne 0) { throw 'ISCC failed (arm64)' }
+
+      # ---- Code signing (DISABLED until the SignPath Foundation approves the project). ----
+      # To enable it, follow docs/signing.md: add the secrets and variables, then change `if: false` to
+      # `if: true` on BOTH steps below. The signed installers replace the unsigned ones in dist\
+      # before the checksums are computed.
+      - name: Upload unsigned installers for SignPath
+        if: false
+        id: upload-unsigned
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-installers
+          path: dist/*.exe
+      - name: Sign installers with SignPath
+        if: false
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: dist
+
+      - name: Write SHA256SUMS.txt
+        run: |
+          Push-Location dist
+          Get-ChildItem *.exe | Sort-Object Name | ForEach-Object {
+            $hash = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$hash  $($_.Name)"
+          } | Out-File -FilePath SHA256SUMS.txt -Encoding ascii
+          Get-Content SHA256SUMS.txt
+          Pop-Location
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create '${{ github.ref_name }}' dist\*.exe dist\SHA256SUMS.txt --title "Network Speed Monitor $env:VERSION" --generate-notes --verify-tag

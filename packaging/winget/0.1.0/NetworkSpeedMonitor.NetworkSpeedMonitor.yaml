@@ -1,0 +1,6 @@
+# Template. Replace the {{TOKENS}} before use (see ../README.md).
+PackageIdentifier: NetworkSpeedMonitor.NetworkSpeedMonitor
+PackageVersion: {{VERSION}}
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: 1.6.0
