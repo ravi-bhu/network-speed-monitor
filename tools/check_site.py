@@ -32,6 +32,7 @@ class Page(HTMLParser):
         self.visible = []       # text outside data-replica / script / style / title
         self.interactive = []   # text inside <a>/<button>, outside data-replica
         self.inline_css = []
+        self.labels = []        # aria-label / alt values outside data-replica
         self.raw_attrs = []     # all attribute values (catches url(...) in style="")
         self._stack = []        # open tags: (tag, skip, interactive)
         self._in_title = False
@@ -55,10 +56,12 @@ class Page(HTMLParser):
         if tag == "style":
             self._in_style = True
         self.raw_attrs.extend(v for v in a.values() if v)
-        if tag in VOID:
-            return
         parent_skip = self._stack[-1][1] if self._stack else False
         skip = parent_skip or "data-replica" in a or tag in ("script", "style", "title")
+        if not skip:
+            self.labels.extend(a[k] for k in ("aria-label", "alt") if a.get(k))
+        if tag in VOID:
+            return
         self._stack.append((tag, skip, tag in ("a", "button")))
 
     def handle_startendtag(self, tag, attrs):
@@ -116,10 +119,20 @@ def internal_links_resolve(pages):
                 continue
             target, _, frag = val.partition("#")
             target = target.partition("?")[0]
+            root_abs = target.startswith("/")
+            if root_abs and path.name != "404.html":
+                problems.append(f"{rel(path)}: {attr}={val!r} is root-absolute; use a relative URL")
+                continue
+            if root_abs:
+                # 404.html is served at whatever path was requested, so it must use root-absolute URLs.
+                target = target.lstrip("/") or "index.html"
+            elif path.name == "404.html" and target:
+                problems.append(f"{rel(path)}: {attr}={val!r} is document-relative; 404.html must use root-absolute URLs")
+                continue
             if target:
                 if target in PENDING_PAGES:
                     continue
-                dest = (path.parent / target).resolve()
+                dest = ((SITE if root_abs else path.parent) / target).resolve()
                 if not dest.is_file() or SITE not in dest.parents:
                     problems.append(f"{rel(path)}: {attr}={val!r} does not resolve to a file under site/")
                     continue
@@ -176,6 +189,11 @@ def copy_rules(pages):
     for path, p in pages.items():
         if "→" in "".join(p.interactive):
             problems.append(f"{rel(path)}: arrow character inside link or button text")
+        for what, text in [("title", p.title or ""), ("meta description", p.meta.get("description", ""))] + [("aria-label/alt", t) for t in p.labels]:
+            if "→" in text:
+                problems.append(f"{rel(path)}: arrow character in {what} {text!r}")
+            if " · " in text:
+                problems.append(f"{rel(path)}: middle dot separator in {what} {text!r}")
         if " · " in "".join(p.visible):
             problems.append(f"{rel(path)}: middle dot separator (space, U+00B7, space) in visible text")
     return problems
@@ -216,6 +234,8 @@ CHECKS = (internal_links_resolve, no_third_party_requests, page_basics,
 
 
 def main():
+    # Problem lines may quote non-ASCII page text; never crash on a narrow console encoding.
+    sys.stdout.reconfigure(errors="backslashreplace")
     files = sorted(SITE.glob("*.html")) if SITE.is_dir() else []
     if not files:
         print("site/: no pages")

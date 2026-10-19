@@ -58,7 +58,7 @@ a { color: inherit; }
 }
 
 /* header */
-.site-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-top: 1.5rem; }
+.site-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1rem; padding-top: 1.5rem; }
 .brand { display: flex; align-items: center; gap: .6rem; font-weight: 700; text-decoration: none; }
 .brand svg { width: 26px; height: 26px; }
 .site-nav { display: flex; flex-wrap: wrap; gap: .25rem 1.5rem; font-size: .95rem; }
