@@ -1,8 +1,15 @@
 name: CI
 
+# Site-only changes don't touch the C++ build, so skip the slow Windows run for them.
 on:
   push:
+    paths-ignore:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
   pull_request:
+    paths-ignore:
+      - 'site/**'
+      - '.github/workflows/pages.yml'
 
 jobs:
   build:

@@ -83,6 +83,22 @@ build\tests\Release\nsm_tests.exe
 The app is `build\src\ui\Release\NetworkSpeedMonitor.exe`. Use `-A ARM64` for an ARM64 build (tests don't run
 there). See [CONTRIBUTING.md](CONTRIBUTING.md) for details.
 
+## Website
+
+The site lives in `site/` and is published to https://netspeed.ravibhushan.dev by
+[`.github/workflows/pages.yml`](.github/workflows/pages.yml) on pushes to `main`. Preview it with
+`python -m http.server --directory site` and check it with `python tools/check_site.py`.
+
+On a release, replace the old version string everywhere in `site/` except `changelog.html`, and add the new entry
+to `changelog.html` by hand.
+
+One-time setup:
+
+1. Settings, Pages, Source: **GitHub Actions**.
+2. DNS: a CNAME record `netspeed` pointing to `ravi-bhu.github.io`.
+3. Settings, Pages, Custom domain: `netspeed.ravibhushan.dev`. Turn on **Enforce HTTPS** once the certificate is
+   issued.
+
 ## License
 
 MIT, see [LICENSE](LICENSE). Third-party code: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
