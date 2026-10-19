@@ -133,6 +133,13 @@ TEST_CASE("TooltipText: Automatic names the internet adapter, pinned shows the a
     CHECK(TooltipText(L"", L"{W}", present, stored, L"%s (automatic)", L"x") == L"Wi-Fi (automatic)");
 }
 
+TEST_CASE("OtherInstanceRunning: an existing mutex, or one we may not open, means another copy runs") {
+    CHECK_FALSE(OtherInstanceRunning(true, ERROR_SUCCESS));        // we created it: first instance
+    CHECK(OtherInstanceRunning(true, ERROR_ALREADY_EXISTS));       // opened the running copy's mutex
+    CHECK(OtherInstanceRunning(false, ERROR_ACCESS_DENIED));       // the running copy is elevated
+    CHECK_FALSE(OtherInstanceRunning(false, ERROR_INVALID_HANDLE)); // any other failure: run without the guard
+}
+
 TEST_CASE("RollUpDue once every 24 h of uptime") {
     const uint64_t day = 24ull * 3600 * 1000;
     CHECK_FALSE(RollUpDue(1000, 1000));

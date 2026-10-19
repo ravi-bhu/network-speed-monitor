@@ -131,6 +131,9 @@ std::wstring TooltipText(const std::wstring& pinnedId, const std::wstring& inter
                          const std::vector<AdapterInfo>& present, const std::vector<AdapterMeta>& stored,
                          const std::wstring& autoFormat, const std::wstring& autoNone);
 
+// The single-instance check, from CreateMutexW's result and GetLastError() straight after it.
+bool OtherInstanceRunning(bool handleValid, DWORD lastError);
+
 bool RollUpDue(uint64_t lastMs, uint64_t nowMs);  // once every 24 h of uptime
 
 // Hands every accumulated row to `write`. If it fails, the rows go back into the accumulator, so

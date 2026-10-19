@@ -135,6 +135,13 @@ std::wstring TooltipText(const std::wstring& pinnedId, const std::wstring& inter
     return text;
 }
 
+bool OtherInstanceRunning(bool handleValid, DWORD lastError) {
+    if (handleValid) return lastError == ERROR_ALREADY_EXISTS;
+    // An elevated copy created the mutex, and its DACL keeps a standard-user process out: it is
+    // still running, so a second overlay would double count.
+    return lastError == ERROR_ACCESS_DENIED;
+}
+
 bool RollUpDue(uint64_t lastMs, uint64_t nowMs) { return nowMs - lastMs >= kRollUpIntervalMs; }
 
 bool FlushAccumulator(UsageAccumulator& acc, const std::function<bool(std::span<const UsageRow>)>& write) {
@@ -168,15 +175,16 @@ App::~App() {
 
 int App::Run(HINSTANCE inst, const std::wstring& cmdLine) {
     HANDLE mutex = CreateMutexW(nullptr, FALSE, kSingleInstanceMutex);
-    if (mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
-        // Already running: ask that instance to show its report, and leave.
+    if (OtherInstanceRunning(mutex != nullptr, GetLastError())) {
+        // Already running: ask that instance to show its report, and leave. (If it runs elevated,
+        // UIPI drops the message; leaving is still right.)
         if (HWND other = FindWindowW(kAppWindowClass, nullptr)) {
             DWORD pid = 0;
             GetWindowThreadProcessId(other, &pid);
             AllowSetForegroundWindow(pid);
             PostMessageW(other, WM_APP_SHOWREPORT, 0, 0);
         }
-        CloseHandle(mutex);
+        if (mutex) CloseHandle(mutex);
         return 0;
     }
 
