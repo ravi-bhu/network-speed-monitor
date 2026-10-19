@@ -99,20 +99,28 @@ main:empty { padding-block: 0; min-height: 40vh; }
 
 main.home { padding-block: 0; }
 .hero {
-  --head: 3.5rem; /* the header above the hero, so header + hero fill the first screen */
+  /* Header + hero fill the first screen. hero.js sets --head to the header's measured height;
+     these values are only the fallback without JavaScript. */
+  --head: 3.5rem;
   display: flex; flex-direction: column;
   min-height: calc(100vh - var(--head));
   min-height: clamp(calc(40rem - var(--head)), calc(100svh - var(--head)), calc(64rem - var(--head)));
 }
-.hero-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; width: 100%; padding-block: clamp(1.5rem, 5vh, 4rem) 1rem; }
+.hero-copy { flex: 1; display: flex; flex-direction: column; justify-content: center; width: 100%; padding-block: clamp(1.5rem, 5vh, 4rem) .5rem; }
 .hero h1 { margin: 0; font-size: clamp(2.75rem, min(6.4vw, 10vh), 5.75rem); line-height: .98; letter-spacing: -.035em; max-width: 11ch; }
 .lede { margin: 1.75rem 0 0; max-width: 34rem; font-size: clamp(1.0625rem, 1.6vw, 1.25rem); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.25rem; margin-top: 2.25rem; }
 
-/* The stage holds the taskbar strip, full-bleed. */
-.stage { position: relative; padding-top: 5.5rem; flex: none; --s: 1.5; /* taskbar magnification */ }
+/* The stage: the controls and the note sit in flow above the full-bleed taskbar, so they can never overlap.
+   On narrow screens the controls move under the taskbar, and the note gets the row above it. */
+.stage {
+  --s: 1.5; /* taskbar magnification */
+  flex: none; padding-top: .5rem;
+  display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-areas: "controls note" "bar bar";
+  align-items: end; column-gap: 1.5rem;
+}
 .stage-controls {
-  position: absolute; left: clamp(1rem, 4vw, 2.5rem); bottom: calc(40px * var(--s) + 1rem);
+  grid-area: controls; margin: 0 0 1rem clamp(1rem, 4vw, 2.5rem);
   display: flex; flex-wrap: wrap; gap: .5rem; font-size: .85rem;
 }
 .theme-switch { display: inline-flex; border: 1px solid var(--rule); border-radius: 6px; overflow: hidden; background: var(--paper); }
@@ -125,6 +133,7 @@ main.home { padding-block: 0; }
 
 /* Taskbar replica. Colours are the app's overlay palettes (src/ui/overlay_renderer.cpp). */
 .taskbar {
+  grid-area: bar;
   --tb-bg: #202020; --tb-text: #ffffff; --tb-muted: #9a9a9a; --tb-up: #f0a35e; --tb-down: #5eb8f0;
   --tb-hover: rgba(255, 255, 255, .1);
   position: relative;
@@ -187,8 +196,9 @@ main.home { padding-block: 0; }
 
 /* Annotation pointing at the readout. */
 .note {
-  position: absolute; bottom: calc(100% + 1rem); right: 0; margin: 0;
-  width: max-content; max-width: 19rem; text-align: right;
+  grid-area: note; justify-self: end; position: relative;
+  margin: 0 var(--note-right, 1rem) 1.35rem 0; /* hero.js lines the note up with the readout */
+  width: max-content; max-width: min(19rem, calc(100% - 2rem)); text-align: right;
   font-family: "Atkinson Hyperlegible Next", system-ui, sans-serif; font-size: .95rem; line-height: 1.4; color: var(--ink);
   pointer-events: none;
 }
@@ -280,22 +290,29 @@ main.home { padding-block: 0; }
 .popup.report { width: 42rem; max-height: calc(100svh - 40px * var(--s) - 2rem); }
 
 @media (max-height: 45rem), (max-width: 50rem) { /* short or narrow screens: keep the taskbar in view */
-  .hero-copy { padding-block: 1rem .5rem; }
-  .lede { margin-top: 1.25rem; }
-  .actions { margin-top: 1.5rem; }
+  .hero-copy { padding-block: .5rem; }
+  .hero h1 { font-size: clamp(2.25rem, min(6.4vw, 8.5vh), 5.75rem); }
+  .lede { margin-top: .75rem; font-size: clamp(1rem, 1.5vw, 1.125rem); line-height: 1.5; }
+  .actions { margin-top: 1rem; row-gap: .5rem; }
+  .actions .btn { padding-block: .6rem; }
+  .fine { margin-top: .5rem; font-size: .85rem; }
+  .stage { padding-top: 0; }
+  .note { margin-bottom: 1.2rem; }
+  .note::after { top: calc(100% + .3rem); height: .6rem; }
 }
 @media (max-width: 50rem) {
-  .hero { --head: 6rem; } /* the nav wraps under the brand */
-  .stage { --s: 1.15; padding-top: 8.5rem; }
+  .hero { --head: 6rem; }
+  .stage { --s: 1.15; grid-template-columns: minmax(0, 1fr); grid-template-areas: "note" "bar" "controls"; }
+  .stage-controls { margin: .75rem 0 0 clamp(1rem, 4vw, 2.5rem); }
   .tb-search, .tb-hide-narrow { display: none; }
-  .note { max-width: 14rem; font-size: .875rem; }
-  .stage-controls { bottom: auto; top: 0; }
+  .note { font-size: .875rem; }
   .r-cards { --r-cols: 2; }
   .r-panels { --r-cols: 1; }
   .r-range { display: none; }
 }
 @media (max-width: 32rem) {
-  .hero { --head: 7.5rem; } /* the nav itself takes two lines */
+  .hero { --head: 7rem; }
+  .site-head { padding-top: 1rem; row-gap: .5rem; }
 }
 
 @media (prefers-reduced-motion: reduce) {

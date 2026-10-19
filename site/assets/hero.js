@@ -32,22 +32,24 @@
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  // Example totals in bytes for the current month. Plausible for one home PC; not real data.
+  // Example totals in bytes for a fixed example month, so they agree with each other on any day.
+  // Plausible for one home PC; not real data.
   const EXAMPLE = {
+    year: 2026, monthIndex: 9, // October 2026 (months count from 0)
     today: { rx: 2.61e9, tx: 0.254e9 },
     week: { rx: 13.1e9, tx: 1.12e9 },
     month: { rx: 45.02e9, tx: 3.71e9 },
-    busiest: { daysAgo: 3, rx: 6.21e9, tx: 0.63e9 },
+    busiest: { day: 16, rx: 6.21e9, tx: 0.63e9 },
     adapters: [["Wi-Fi", 42.3e9], ["Ethernet", 6.4e9], ["vEthernet (WSL)", 1.18e9]],
     networks: [["HomeNet-5G", 38.9e9], ["Office", 2.95e9], ["Library guest", 0.412e9]],
   };
 
   function renderReport(root) {
-    const now = new Date();
+    const { year, monthIndex: month } = EXAMPLE;
     const date = (d) => d.toLocaleDateString();
-    const monthFirst = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthLast = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    const busiest = new Date(now.getFullYear(), now.getMonth(), Math.max(1, now.getDate() - EXAMPLE.busiest.daysAgo));
+    const monthFirst = new Date(year, month, 1);
+    const monthLast = new Date(year, month + 1, 0);
+    const busiest = new Date(year, month, EXAMPLE.busiest.day);
     const longDate = busiest.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
     // IDS_RX_TX "↓ %s · ↑ %s", with a spoken version.
@@ -85,9 +87,15 @@
 
   const readout = $("readout");
   if (!readout) return;
-  const menu = $("menu"), report = $("report"), note = $("note"), tray = $("tray"), taskbar = $("taskbar");
-  const showMenuBtn = $("show-menu");
+  const menu = $("menu"), report = $("report"), note = $("note"), taskbar = $("taskbar");
+  const showMenuBtn = $("show-menu"), controls = document.querySelector(".stage-controls");
   const lines = readout.querySelector(".lines");
+
+  // Header + hero fill the first screen: tell the CSS how tall the header really is (the nav wraps).
+  const hero = document.querySelector(".hero"), head = document.querySelector(".site-head");
+  const setHead = () => hero.style.setProperty("--head", Math.ceil(hero.getBoundingClientRect().top + scrollY) + "px");
+  setHead();
+  if (window.ResizeObserver) new ResizeObserver(setHead).observe(head);
 
   // A believable minute of traffic: idle trickle, page loads, a download, a video call.
   const scenes = [
@@ -161,13 +169,15 @@
     draw(); clock();
   }, 1000);
 
-  // Point the annotation's leader line at the middle of the readout, and right-align the menu to it.
+  // Line the note's right edge up with the readout's and point its leader line at the readout's middle.
+  // The note stays 16 px from either screen edge and clear of the controls when they share its row.
   function lead() {
-    const t = tray.getBoundingClientRect(), r = readout.getBoundingClientRect();
-    // Right-align the note to the readout, but never closer than 1rem to the viewport edge.
-    const right = Math.max(t.right - r.right, 16 - (innerWidth - t.right));
-    note.style.right = right + "px";
-    note.style.setProperty("--lead-x", t.right - right - (r.left + r.width / 2) + "px");
+    const bar = taskbar.getBoundingClientRect(), r = readout.getBoundingClientRect(), c = controls.getBoundingClientRect();
+    const w = note.getBoundingClientRect().width; // set by max-width and the grid, not by the margin
+    const leftBound = c.bottom <= bar.top ? Math.max(16, c.right + 24) : 16;
+    const right = Math.max(16, Math.min(bar.right - r.right, bar.right - leftBound - w));
+    note.style.setProperty("--note-right", right + "px");
+    note.style.setProperty("--lead-x", bar.right - right - (r.left + r.width / 2) + "px");
     placeMenu();
   }
   // The menu opens right-aligned to the readout, like a menu at the pointer, but stays on screen.
@@ -178,7 +188,7 @@
     menu.style.setProperty("--pop-right", Math.max(8, right) + "px");
   }
   function layout() { sizeText(); lead(); }
-  addEventListener("resize", lead);
+  addEventListener("resize", () => { setHead(); lead(); });
   layout();
   if (document.fonts) document.fonts.ready.then(layout);
 
@@ -196,8 +206,10 @@
 
   const menuItems = [...menu.querySelectorAll('[role^="menuitem"]')];
   const isOpen = (el) => !el.hidden;
+  let opener = readout; // focus goes back here when a popup closes
 
-  function show(el) {
+  function show(el, from) {
+    if (from) opener = from;
     if (isOpen(el)) return; // a second open (contextmenu after Shift+F10, long-press) changes nothing
     for (const p of [menu, report]) if (p !== el) p.hidden = true;
     el.hidden = false;
@@ -217,7 +229,7 @@
     readout.setAttribute("aria-expanded", String(isOpen(report)));
     showMenuBtn.setAttribute("aria-expanded", String(isOpen(menu)));
   }
-  function closeToReadout() { hideAll(); readout.focus({ preventScroll: true }); }
+  function closeToOpener() { hideAll(); opener.focus({ preventScroll: true }); }
 
   // Long-press (touch has no right-click): 500 ms down without moving more than 10 px opens the menu.
   let pressTimer = 0, pressX = 0, pressY = 0, swallowClick = false;
@@ -227,7 +239,7 @@
     cancelPress();
     if (e.button !== 0) return;
     pressX = e.clientX; pressY = e.clientY;
-    pressTimer = setTimeout(() => { pressTimer = 0; swallowClick = true; show(menu); }, 500);
+    pressTimer = setTimeout(() => { pressTimer = 0; swallowClick = true; show(menu, readout); }, 500);
   });
   readout.addEventListener("pointermove", (e) => {
     if (pressTimer && Math.hypot(e.clientX - pressX, e.clientY - pressY) > 10) cancelPress();
@@ -237,13 +249,13 @@
   readout.addEventListener("click", (e) => {
     if (swallowClick && e.detail !== 0) { swallowClick = false; return; } // the long-press already opened the menu
     swallowClick = false;
-    if (isOpen(report)) hideAll(); else show(report);
+    if (isOpen(report)) hideAll(); else show(report, readout);
   });
-  readout.addEventListener("contextmenu", (e) => { e.preventDefault(); cancelPress(); show(menu); });
+  readout.addEventListener("contextmenu", (e) => { e.preventDefault(); cancelPress(); show(menu, readout); });
   readout.addEventListener("keydown", (e) => {
-    if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) { e.preventDefault(); show(menu); }
+    if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) { e.preventDefault(); show(menu, readout); }
   });
-  showMenuBtn.addEventListener("click", () => { if (isOpen(menu)) hideAll(); else show(menu); });
+  showMenuBtn.addEventListener("click", () => { if (isOpen(menu)) hideAll(); else show(menu, showMenuBtn); });
 
   // Menu keyboard: arrows, Home and End move; Tab leaves the menu.
   menu.addEventListener("keydown", (e) => {
@@ -253,13 +265,13 @@
     else if (e.key === "ArrowUp") go(i < 0 ? -1 : i - 1);
     else if (e.key === "Home") go(0);
     else if (e.key === "End") go(-1);
-    else if (e.key === "Tab") { e.preventDefault(); closeToReadout(); }
+    else if (e.key === "Tab") { e.preventDefault(); closeToOpener(); }
   });
 
   $("m-report").addEventListener("click", () => show(report));
-  $("m-settings").addEventListener("click", closeToReadout);
-  $("m-exit").addEventListener("click", closeToReadout);
-  $("r-close").addEventListener("click", closeToReadout);
+  $("m-settings").addEventListener("click", closeToOpener);
+  $("m-exit").addEventListener("click", closeToOpener);
+  $("r-close").addEventListener("click", closeToOpener);
   $("m-graph").addEventListener("click", (e) => {
     const on = e.currentTarget.getAttribute("aria-checked") !== "true";
     e.currentTarget.setAttribute("aria-checked", String(on));
@@ -277,7 +289,7 @@
   });
 
   document.addEventListener("keydown", (e) => {
-    if (e.key === "Escape" && (isOpen(menu) || isOpen(report))) closeToReadout();
+    if (e.key === "Escape" && (isOpen(menu) || isOpen(report))) closeToOpener();
   });
   document.addEventListener("pointerdown", (e) => {
     if (!e.target.closest(".popup, #readout, #show-menu")) hideAll();
