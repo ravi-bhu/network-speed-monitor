@@ -24,9 +24,90 @@
       <a href="https://github.com/ravi-bhu/network-speed-monitor">Source</a>
     </nav>
   </header>
+</div>
 
-  <main id="main"></main>
+<main id="main" class="home">
+  <section class="hero" aria-labelledby="hero-title">
+    <div class="wrap hero-copy">
+      <h1 id="hero-title">Your internet speed, next to the clock.</h1>
+      <p class="lede">A small Windows taskbar readout of your upload and download speed, with a one-minute graph and a usage report that never leaves your PC. It makes no network connections of its own.</p>
+      <div class="actions">
+        <a class="btn btn-primary" href="https://github.com/ravi-bhu/network-speed-monitor/releases/download/v0.1.0/NetworkSpeedMonitor-0.1.0-x64-setup.exe">
+          <svg viewBox="0 0 18 18" aria-hidden="true"><path d="M9 2v10m-4-4 4 4 4-4M3 15h12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Download for Windows
+        </a>
+        <a class="link-quiet" href="https://github.com/ravi-bhu/network-speed-monitor">Read the source on GitHub</a>
+      </div>
+      <p class="fine">Version 0.1.0, free and MIT licensed. For Windows 10 and 11 on x64 or ARM64.</p>
+    </div>
 
+    <div class="stage">
+      <div class="stage-controls">
+        <div class="theme-switch" role="group" aria-label="Taskbar colour">
+          <button type="button" aria-pressed="true" data-theme="dark">Dark taskbar</button>
+          <button type="button" aria-pressed="false" data-theme="light">Light taskbar</button>
+        </div>
+        <button type="button" class="show-menu" id="show-menu" aria-haspopup="menu" aria-controls="menu" aria-expanded="false">Show the menu</button>
+      </div>
+
+      <div class="taskbar" id="taskbar">
+        <div class="tb-left" aria-hidden="true" data-replica>
+          <div class="tb-start"><svg viewBox="0 0 16 16"><path d="M0 2.2 6.5 1.3v6.2H0zM7.3 1.2 16 0v7.5H7.3zM0 8.3h6.5v6.3L0 13.7zM7.3 8.3H16V16l-8.7-1.2z"/></svg></div>
+          <div class="tb-search">Type here to search</div>
+          <div class="tb-app"><i></i></div><div class="tb-app"><i></i></div><div class="tb-app"><i></i></div>
+        </div>
+
+        <div class="tb-tray" id="tray">
+          <p class="note" id="note"><b>Upload on top, download below,</b> updated every second. Click it for the usage report, right-click for options.</p>
+
+          <button class="readout" id="readout" type="button" data-replica aria-haspopup="dialog" aria-controls="report" aria-expanded="false"
+                  aria-label="Network speed readout, simulated. Opens the usage report; Shift+F10 opens the menu.">
+            <svg viewBox="0 0 54 28" aria-hidden="true">
+              <polyline id="g-rx"/>
+              <polyline id="g-tx"/>
+            </svg>
+            <span class="lines">
+              <span><span class="a-up">↑</span> <span id="v-up">0 B/s</span></span>
+              <span><span class="a-down">↓</span> <span id="v-down">0 B/s</span></span>
+            </span>
+          </button>
+
+          <div class="tb-icons" aria-hidden="true" data-replica>
+            <span class="tb-btn tb-hide-narrow"><svg viewBox="0 0 16 16"><path d="m4 10 4-4 4 4"/></svg></span>
+            <span class="tb-btn tb-hide-narrow"><svg viewBox="0 0 16 16"><path d="M1.5 6.5a9.5 9.5 0 0 1 13 0M3.8 9a6.2 6.2 0 0 1 8.4 0M6.1 11.4a2.9 2.9 0 0 1 3.8 0"/><circle cx="8" cy="13.6" r=".6" fill="currentColor" stroke="none"/></svg></span>
+            <span class="tb-btn tb-hide-narrow"><svg viewBox="0 0 16 16"><path d="M2 6h3l4-3v10l-4-3H2zM11.5 5.5c1.3 1.3 1.3 3.7 0 5"/></svg></span>
+            <span class="tb-btn tb-clock"><span id="clock-t">7:23 PM</span><span id="clock-d">19/10/2026</span></span>
+            <span class="tb-btn tb-notif"><svg viewBox="0 0 16 16"><path d="M2 3h12v8H9l-3 3v-3H2z"/></svg></span>
+          </div>
+        </div>
+
+        <div class="popup menu" id="menu" role="menu" aria-label="Network Speed Monitor" data-replica hidden>
+          <button type="button" role="menuitem" tabindex="-1" class="sub">Adapter</button>
+          <button type="button" role="menuitem" tabindex="-1" class="sub">Units</button>
+          <button type="button" role="menuitemcheckbox" tabindex="-1" aria-checked="true" id="m-graph">Show graph</button>
+          <button type="button" role="menuitemcheckbox" tabindex="-1" aria-checked="false" id="m-letters">Use letters (U/D)</button>
+          <hr>
+          <button type="button" role="menuitem" tabindex="-1" class="default" id="m-report">Open report…</button>
+          <button type="button" role="menuitem" tabindex="-1" id="m-settings">Settings…</button>
+          <hr>
+          <button type="button" role="menuitem" tabindex="-1" id="m-exit">Exit</button>
+        </div>
+
+        <div class="popup report report-dark" id="report" role="dialog" aria-label="Network usage report, example" data-replica hidden>
+          <div class="report-title">
+            <span>Network usage – Network Speed Monitor</span>
+            <span class="cap" aria-hidden="true"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M0 5.5h10" stroke="currentColor"/></svg></span>
+            <span class="cap" aria-hidden="true"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M.5 .5h9v9h-9z" stroke="currentColor" fill="none"/></svg></span>
+            <button type="button" class="cap" id="r-close" aria-label="Close report"><svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="m0 0 10 10M10 0 0 10" stroke="currentColor"/></svg></button>
+          </div>
+          <div class="report-body" data-report-example></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="wrap">
   <footer class="site-foot">
     <nav aria-label="Footer">
       <a href="guide.html">Guide</a>
@@ -40,5 +121,6 @@
   </footer>
 </div>
 
+<script src="assets/hero.js"></script>
 </body>
 </html>
