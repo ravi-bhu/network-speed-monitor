@@ -74,3 +74,8 @@ Already checked automatically on Windows 10 22H2 (build 19045, 125% scaling, dar
 - [ ] Flyouts: Start, search, quick settings, notification center/calendar, tray overflow, Task View, Alt+Tab, and the Widgets board. The readout is never drawn over them. Record the class of any flyout that covers it. The classes handled are `Windows.UI.Core.CoreWindow`, `XamlExplorerHostIslandWindow`, `MultitaskingViewFrame`, `NotifyIconOverflowWindow` and `TopLevelWindowForOverflowXamlIsland`.
 - [ ] Left alignment with 30 windows: the graph drops, then the readout hides; it never overlaps a button. The readout comes back as windows close.
 - [ ] **CPU of both NetworkSpeedMonitor.exe and explorer.exe** with 20–30 task buttons, over 60 s. On Win11 the UIA button query runs every 2 s while the readout shows. On Win10 (task-list root, 10–30 buttons) one query cost 5–25 ms of our CPU and roughly 25–75 ms of Explorer's. If the two together exceed 0.5% of the machine, report back.
+
+## Task 7
+- [ ] With Wi-Fi and Ethernet both available, switch between them (disable one adapter, or unplug the cable); the app receives a network-change message and Automatic mode follows the active internet adapter.
+- [ ] Connect a VPN (including a split-default one using 0.0.0.0/1 + 128.0.0.0/1); Automatic mode switches to the VPN adapter, and back after disconnecting.
+- [ ] Rapid adapter toggling produces coalesced notifications (no message flood) and the app still ends on the right adapter.
