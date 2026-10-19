@@ -157,7 +157,8 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Properties:** right-click `NetworkSpeedMonitor.exe` > Properties > Details shows the product name, version and copyright.
 
 ## Task 17: Installer, winget, release pipeline, docs
-- [ ] **Compile the installer (Inno Setup was not installed when this was written):** install Inno Setup 6.3+, then run `ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=x64 /DSourceExe=..\build\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss` from the repo root. It compiles with no errors or warnings and writes `dist\NetworkSpeedMonitor-0.1.0-x64-setup.exe`. Do the same for `arm64` against an ARM64 build.
+- [x] **Compile the x64 installer:** done 2026-10-19 on Win10 with a per-user Inno Setup 6 install (`%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`). `ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=x64 /DSourceExe=<repo>\build\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss` succeeded, including the `[Code]` section, and wrote `dist\NetworkSpeedMonitor-0.1.0-x64-setup.exe` (2.8 MB).
+- [ ] **Compile the arm64 installer** against an ARM64 build. The release workflow does this in CI.
 - [ ] **Install as a standard user:** run the installer from a non-admin account. There is no UAC prompt, it installs to `%LOCALAPPDATA%\Programs\NetworkSpeedMonitor`, adds a Start menu entry, and "Launch Network Speed Monitor" on the last page starts the app.
 - [ ] **Autostart:** after install, sign out and back in; the overlay appears. (Settings > Start with Windows is on by default.)
 - [ ] **Running app:** with the app running, run the installer again (upgrade) and the uninstaller. Each closes the app by itself, without asking and without killing it (see the F2 rows under "Final review fixes"); the upgrade starts it again.
