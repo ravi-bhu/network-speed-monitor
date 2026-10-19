@@ -26,6 +26,9 @@ AppId={{A5C137BB-8BC5-49E5-A9AE-ABE0DCCB2EDF}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher=Ravi Bhushan
+; File metadata of the setup exe. Code signing (docs/signing.md) checks the product name and version.
+VersionInfoVersion={#MyAppVersion}
+VersionInfoProductName={#MyAppName}
 DefaultDirName={localappdata}\Programs\NetworkSpeedMonitor
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes

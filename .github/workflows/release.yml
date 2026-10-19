@@ -55,21 +55,50 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "Import check failed for $exe" }
           }
 
+      # The installers are compiled from stage\<arch>\NetworkSpeedMonitor.exe, so signing the app (below) can
+      # replace the exes in place before they are packed.
+      - name: Stage the app executables
+        run: |
+          foreach ($pair in @(@('x64', 'build'), @('arm64', 'build-arm64'))) {
+            New-Item -ItemType Directory -Force "stage\$($pair[0])" | Out-Null
+            Copy-Item "$($pair[1])\src\ui\Release\NetworkSpeedMonitor.exe" "stage\$($pair[0])\"
+          }
+
+      # ---- Code signing (DISABLED until the SignPath Foundation approves the project). ----
+      # To enable it, follow docs/signing.md: add the secrets and variables, then change `if: false` to
+      # `if: true` on ALL FOUR signing steps (two here for the app, two after the installers).
+      - name: Upload unsigned app for SignPath
+        if: false
+        id: upload-unsigned-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app
+          path: stage/
+      - name: Sign the app with SignPath
+        if: false
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.upload-unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: stage
+
       - name: Install Inno Setup
         run: choco install innosetup -y --no-progress
 
       - name: Compile installers
         run: |
           $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
-          & $iscc "/DMyAppVersion=$env:VERSION" /DMyArch=x64 "/DSourceExe=$PWD\build\src\ui\Release\NetworkSpeedMonitor.exe" installer\NetworkSpeedMonitor.iss
+          & $iscc "/DMyAppVersion=$env:VERSION" /DMyArch=x64 "/DSourceExe=$PWD\stage\x64\NetworkSpeedMonitor.exe" installer\NetworkSpeedMonitor.iss
           if ($LASTEXITCODE -ne 0) { throw 'ISCC failed (x64)' }
-          & $iscc "/DMyAppVersion=$env:VERSION" /DMyArch=arm64 "/DSourceExe=$PWD\build-arm64\src\ui\Release\NetworkSpeedMonitor.exe" installer\NetworkSpeedMonitor.iss
+          & $iscc "/DMyAppVersion=$env:VERSION" /DMyArch=arm64 "/DSourceExe=$PWD\stage\arm64\NetworkSpeedMonitor.exe" installer\NetworkSpeedMonitor.iss
           if ($LASTEXITCODE -ne 0) { throw 'ISCC failed (arm64)' }
 
-      # ---- Code signing (DISABLED until the SignPath Foundation approves the project). ----
-      # To enable it, follow docs/signing.md: add the secrets and variables, then change `if: false` to
-      # `if: true` on BOTH steps below. The signed installers replace the unsigned ones in dist\
-      # before the checksums are computed.
+      # The signed installers replace the unsigned ones in dist\ before the checksums are computed.
       - name: Upload unsigned installers for SignPath
         if: false
         id: upload-unsigned
@@ -85,6 +114,7 @@ jobs:
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
           project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
           signing-policy-slug: release-signing
+          artifact-configuration-slug: installers
           github-artifact-id: ${{ steps.upload-unsigned.outputs.artifact-id }}
           wait-for-completion: true
           output-artifact-directory: dist
@@ -106,5 +136,9 @@ jobs:
         run: |
           # gh does not expand wildcards on Windows: pass every file by its full path.
           $files = @((Get-ChildItem dist\*.exe).FullName) + (Resolve-Path dist\SHA256SUMS.txt).Path
-          gh release create $env:REF_NAME @files --title "Network Speed Monitor $env:VERSION" --generate-notes --verify-tag
+          # SignPath asks for the term "Code signing policy" on the release page; --notes goes above the
+          # generated notes.
+          $notes = "Check a download against ``SHA256SUMS.txt`` before running it. " +
+                   "[Code signing policy](https://github.com/$env:GITHUB_REPOSITORY#code-signing-policy)"
+          gh release create $env:REF_NAME @files --title "Network Speed Monitor $env:VERSION" --notes $notes --generate-notes --verify-tag
           if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }

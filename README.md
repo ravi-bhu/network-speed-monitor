@@ -43,7 +43,7 @@ Requires Windows 10 or 11 (x64 or ARM64). No administrator rights are needed; it
 - **winget** (once the package is published): `winget install NetworkSpeedMonitor.NetworkSpeedMonitor`
 - **Installer:** download `NetworkSpeedMonitor-<version>-x64-setup.exe` (or `-arm64-`) from the
   [Releases](../../releases) page and compare its hash with `SHA256SUMS.txt`. Releases are unsigned until code
-  signing is approved (see [docs/signing.md](docs/signing.md)), so SmartScreen may warn.
+  signing is approved (see the [code signing policy](#code-signing-policy)), so SmartScreen may warn.
 
 Uninstalling asks whether to delete your usage history; a silent uninstall keeps it.
 
@@ -51,6 +51,23 @@ Uninstalling asks whether to delete your usage history; a silent uninstall keeps
 
 No network connections, no telemetry, no accounts. Your data stays in `%LOCALAPPDATA%\NetworkSpeedMonitor`.
 Details and how to delete it: [PRIVACY.md](PRIVACY.md).
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by
+[SignPath Foundation](https://signpath.org/). (Applied for; until it is approved, releases are unsigned.)
+
+Only the installers and the app built by this repository's [release workflow](.github/workflows/release.yml),
+from the tagged source, are signed. Every signing request is approved by hand.
+
+Team roles:
+
+- Committers and reviewers: [Ravi Bhushan](https://github.com/ravi-bhu)
+- Approvers: [Ravi Bhushan](https://github.com/ravi-bhu)
+
+Privacy policy: this program will not transfer any information to other networked systems unless specifically
+requested by the user or the person installing or operating it. It makes no network connections at all; see
+[PRIVACY.md](PRIVACY.md).
 
 ## Build
 
