@@ -79,3 +79,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 125% scaling, dar
 - [ ] With Wi-Fi and Ethernet both available, switch between them (disable one adapter, or unplug the cable); the app receives a network-change message and Automatic mode follows the active internet adapter.
 - [ ] Connect a VPN (including a split-default one using 0.0.0.0/1 + 128.0.0.0/1); Automatic mode switches to the VPN adapter, and back after disconnecting.
 - [ ] Rapid adapter toggling produces coalesced notifications (no message flood) and the app still ends on the right adapter.
+
+## Task 8
+
+- [ ] **Win11 24H2+ VM, location services OFF:** run the app on Wi-Fi and confirm `QueryAdapterNetworks()` still returns the Wi-Fi network name (the NLM name, not WLAN API). If the name comes back empty, the UI (Task 15) must show "Unknown Wi-Fi network" and must not prompt for location. Record the result.
