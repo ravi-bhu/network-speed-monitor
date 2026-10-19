@@ -144,3 +144,14 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Screen reader:** Narrator reads the period box, buttons, tabs and table cells. The Summary and Timeline drawings aren't exposed to UI Automation (a known gap); record how Narrator handles them.
 - [ ] **taskkill while a popup shows:** with the chart's tooltip or any menu visible, `taskkill` without `/f` may hit the popup's system shadow window and do nothing. This is a known limitation, shared by the overlay's own tooltip and menu. Confirm that it works once the popup is gone.
 - [ ] **Windows 11 VM:** all of the above, plus whether the Win11 dark mode draws the checkbox, combo box and scroll bars dark.
+
+## Task 16: Settings dialog and About
+- [ ] **Settings from the menu:** right-click the overlay and choose Settings…. Every control changes the overlay at once on OK (units, graph, letters, all taskbars, adapter), and Cancel or Esc changes nothing. After restarting the app the dialog shows the same values.
+- [ ] **Start with Windows:** unchecking it and pressing OK removes `HKCU\...\Run\NetworkSpeedMonitor`. Checking it again and pressing OK writes it back (the automated run saw the value removed, not re-added through the dialog).
+- [ ] **Manage adapters…:** the dialog closes with your changes applied, and the report opens on the Adapters tab.
+- [ ] **Open data folder:** Explorer opens `%LOCALAPPDATA%\NetworkSpeedMonitor`.
+- [ ] **About link:** configure with `-DNSM_SOURCE_URL=<url>`; the "Source code" link appears under the About line and opens that URL in the default browser. Without the option there is no link. The link is the system blue, which is dim on the dark dialog (about 3:1); check how it looks on your display and with a High Contrast theme.
+- [ ] **Dark and High Contrast:** the dialog follows the Windows app theme. Check the check boxes and radio buttons (drawn by the app in dark mode) and the combo box on Windows 10 and Windows 11, and that High Contrast uses the system controls.
+- [ ] **Pinned adapter that is hidden or unplugged:** pin an adapter, hide it in the report, and open Settings. It is still listed and selected, and OK keeps it pinned.
+- [ ] **DPI:** open the dialog at 100%, 125% and 150% scaling; nothing clips, including long adapter names in the combo box.
+- [ ] **Properties:** right-click `NetworkSpeedMonitor.exe` > Properties > Details shows the product name, version and copyright.

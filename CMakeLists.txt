@@ -11,6 +11,12 @@ add_compile_definitions(UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN _WIN32_WIN
 
 set(NSM_SOURCE_URL "" CACHE STRING "Source repository URL shown in the About box")
 
+# Version and About link as macros for the code and for the VERSIONINFO resource (generated, in the build tree).
+set(NSM_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(NSM_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(NSM_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+configure_file(${CMAKE_SOURCE_DIR}/res/nsm_version.h.in ${CMAKE_BINARY_DIR}/generated/nsm_version.h @ONLY)
+
 enable_testing()
 
 add_subdirectory(src/core)

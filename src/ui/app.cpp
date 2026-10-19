@@ -13,7 +13,9 @@
 #include "platform/autostart.h"
 #include "platform/paths.h"
 #include "platform/strings.h"
+#include "platform/theme.h"
 #include "resource.h"
+#include "ui/dialogs.h"
 
 namespace nsm {
 
@@ -463,6 +465,32 @@ void App::ApplyOptions() {
     SaveSettingsFile();
 }
 
+void App::ShowSettings() {
+    if (settingsOpen_ || exiting_) return;
+    settingsOpen_ = true;
+    if (recording_) metas_ = store_.Adapters();
+    // The same list as the right-click menu: not hidden, plus the pinned adapter even if hidden or gone.
+    std::vector<AdapterChoice> choices;
+    const std::vector<AdapterMenuItem> items =
+        BuildAdapterMenu(adapters_, metas_, settings_.adapterId, LoadStr(IDS_MENU_AUTOMATIC));
+    for (size_t i = 1; i < items.size(); ++i) choices.emplace_back(items[i].id, items[i].label);
+
+    SettingsDialogOptions options;
+    options.dark = reportTheme_ ? *reportTheme_ == ReportTheme::Dark : (!IsHighContrast() && !AreAppsLight());
+    options.dataDir = dataDir_;
+    Settings next = settings_;
+    const bool ok = ShowSettingsDialog(hwnd_, next, choices, &options);
+    settingsOpen_ = false;
+    if (!ok || exiting_) return;
+
+    const bool autostartChanged = next.startWithWindows != settings_.startWithWindows;
+    settings_ = next;
+    if (autostartChanged) SetAutostart(settings_.startWithWindows);  // a failure is retried at the next start
+    ApplyOptions();
+    UpdateTooltip();
+    if (options.openAdapters) ShowReport(2);  // after applying: nothing the user changed is lost
+}
+
 void App::ShowMenu(POINT pt) {
     if (recording_) metas_ = store_.Adapters();  // pick up renames and hides made in the report
     const std::vector<AdapterMenuItem> adapters =
@@ -509,7 +537,8 @@ void App::ShowMenu(POINT pt) {
             ShowReport(0);
             return;
         case kCmdSettings:
-            return;  // Task 16: the settings dialog
+            ShowSettings();
+            return;
         case kCmdExit:
             Exit();
             return;

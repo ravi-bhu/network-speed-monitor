@@ -10,7 +10,7 @@ add_library(nsm_ui STATIC
   report_window.cpp
   dialogs.cpp
 )
-target_include_directories(nsm_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. PRIVATE ${CMAKE_SOURCE_DIR}/res)
+target_include_directories(nsm_ui PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/.. PRIVATE ${CMAKE_SOURCE_DIR}/res ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(nsm_ui PUBLIC nsm_core nsm_platform nsm_storage nsm_report d2d1 dwrite ole32 oleaut32 shcore comctl32
   uxtheme dwmapi)
 
@@ -18,7 +18,7 @@ add_executable(NetworkSpeedMonitor WIN32
   main.cpp
   ${CMAKE_SOURCE_DIR}/res/app.rc
 )
-target_include_directories(NetworkSpeedMonitor PRIVATE ${CMAKE_SOURCE_DIR}/res)
+target_include_directories(NetworkSpeedMonitor PRIVATE ${CMAKE_SOURCE_DIR}/res ${CMAKE_BINARY_DIR}/generated)
 target_link_libraries(NetworkSpeedMonitor PRIVATE nsm_ui comctl32)
 # The manifest is embedded by res/app.rc; stop the linker from generating a second one.
 target_link_options(NetworkSpeedMonitor PRIVATE /MANIFEST:NO)

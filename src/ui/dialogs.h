@@ -1,11 +1,14 @@
 #pragma once
 #include <windows.h>
 
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "core/types.h"
+#include "platform/settings.h"
 
 namespace nsm {
 
@@ -21,5 +24,42 @@ bool ConfirmDelete(HWND owner, const std::wstring& message);
 void ShowError(HWND owner, const std::wstring& message);
 
 std::wstring TrimName(const std::wstring& name);
+
+// ---- Settings dialog (opened from the overlay's right-click menu) ----
+
+using AdapterChoice = std::pair<std::wstring, std::wstring>;  // id, display name
+
+// What the dialog's controls hold. adapterIndex 0 = Automatic, i + 1 = choices[i].
+struct SettingsDialogState {
+    bool startWithWindows = true;
+    size_t adapterIndex = 0;
+    UnitMode units = UnitMode::Bytes;
+    bool showGraph = true;
+    bool letters = false;
+    bool allTaskbars = false;
+
+    friend bool operator==(const SettingsDialogState&, const SettingsDialogState&) = default;
+};
+
+// The adapter list as the combo box shows it: `adapters` plus the pinned adapter if it is not among them
+// (hidden or unplugged), so the pinned choice is never silently dropped.
+std::vector<AdapterChoice> SettingsAdapterChoices(const std::vector<AdapterChoice>& adapters,
+                                                  const std::wstring& pinnedId);
+SettingsDialogState StateFromSettings(const Settings& s, const std::vector<AdapterChoice>& choices);
+// `base` with the dialog's fields replaced; everything else (report window rectangle) is kept. An
+// adapterIndex outside the list keeps base.adapterId.
+Settings ApplyDialogState(Settings base, const SettingsDialogState& state, const std::vector<AdapterChoice>& choices);
+
+struct SettingsDialogOptions {
+    bool dark = false;
+    std::filesystem::path dataDir;  // what "Open data folder" opens; empty = the default data folder
+    // Out: "Manage adapters…" was pressed. The dialog then closes as OK with the controls' current state
+    // applied, so nothing the user changed is lost; the caller opens the report on the Adapters tab.
+    bool openAdapters = false;
+};
+
+// Modal. True = OK: `s` holds the new settings (not yet applied or saved). Cancel and Esc leave `s` untouched.
+bool ShowSettingsDialog(HWND owner, Settings& s, const std::vector<AdapterChoice>& adapters,
+                        SettingsDialogOptions* options = nullptr);
 
 }  // namespace nsm

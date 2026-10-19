@@ -99,12 +99,46 @@
 #define IDS_RANGE_FROM 271
 #define IDS_RANGE_TO 272
 
+// Settings dialog (Task 16)
+#define IDS_SET_TITLE 280
+#define IDS_SET_AUTOSTART 281
+#define IDS_SET_ADAPTER 282
+#define IDS_SET_UNITS 283
+#define IDS_SET_BYTES 284
+#define IDS_SET_BITS 285
+#define IDS_SET_GRAPH 286
+#define IDS_SET_LETTERS 287
+#define IDS_SET_SHOW_ON 288
+#define IDS_SET_PRIMARY 289
+#define IDS_SET_ALL 290
+#define IDS_SET_MANAGE 291
+#define IDS_SET_OPEN_FOLDER 292
+#define IDS_SET_ABOUT 293   // "%s": the version
+#define IDS_SET_SOURCE 294  // the About link's text
+
 // Dialog templates (res/app.rc) and their controls
 #define IDD_RENAME 300
 #define IDD_RANGE 301
+#define IDD_SETTINGS 302
 #define IDC_RENAME_PROMPT 1001
 #define IDC_RENAME_EDIT 1002
 #define IDC_RANGE_FROM_LABEL 1003
 #define IDC_RANGE_FROM 1004
 #define IDC_RANGE_TO_LABEL 1005
 #define IDC_RANGE_TO 1006
+#define IDC_SET_AUTOSTART 1010
+#define IDC_SET_ADAPTER_LABEL 1011
+#define IDC_SET_ADAPTER 1012
+#define IDC_SET_UNITS_LABEL 1013
+#define IDC_SET_BYTES 1014
+#define IDC_SET_BITS 1015
+#define IDC_SET_GRAPH 1016
+#define IDC_SET_LETTERS 1017
+#define IDC_SET_SHOW_ON_LABEL 1018
+#define IDC_SET_PRIMARY 1019
+#define IDC_SET_ALL 1020
+#define IDC_SET_MANAGE 1021
+#define IDC_SET_OPEN_FOLDER 1022
+#define IDC_SET_SEPARATOR 1023
+#define IDC_SET_ABOUT 1024
+#define IDC_SET_LINK 1025

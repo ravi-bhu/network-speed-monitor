@@ -58,6 +58,7 @@ private:
     void RollUpNow();
     void ShowMenu(POINT pt);
     void ApplyOptions();  // overlay options from settings_, then save
+    void ShowSettings();  // the Settings dialog; OK applies through ApplyOptions
     void SaveSettingsFile();
     void UpdateTooltip();
     void ReloadAdapterNames();  // after a rename or hide in the report
@@ -95,6 +96,7 @@ private:
     bool refreshAgain_ = false;
     bool exiting_ = false;
     bool menuPending_ = false;
+    bool settingsOpen_ = false;
     POINT menuPt_{};
     std::FILE* trace_ = nullptr;  // --trace <file> (Debug builds): one CSV line per tick
     std::filesystem::path dataDirOverride_;  // --data-dir <path> (Debug builds): use a test data folder
