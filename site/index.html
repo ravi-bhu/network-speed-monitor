@@ -50,7 +50,7 @@
         <button type="button" class="show-menu" id="show-menu" aria-haspopup="menu" aria-controls="menu" aria-expanded="false">Show the menu</button>
       </div>
 
-      <p class="note" id="note"><b>Upload on top, download below,</b> updated every second. Click it for the usage report, right-click for options.</p>
+      <p class="note" id="note"><b>Upload on top, download below,</b> updated every second. Click it for the usage report, right-click (or press and hold) for options.</p>
 
       <div class="taskbar" id="taskbar">
         <div class="tb-left" aria-hidden="true" data-replica>
@@ -67,8 +67,8 @@
               <polyline id="g-tx"/>
             </svg>
             <span class="lines">
-              <span><span class="a-up">↑</span> <span id="v-up">0 B/s</span></span>
-              <span><span class="a-down">↓</span> <span id="v-down">0 B/s</span></span>
+              <span><span class="a-up">↑</span> <span id="v-up">96.0 KB/s</span></span>
+              <span><span class="a-down">↓</span> <span id="v-down">1.24 MB/s</span></span>
             </span>
           </button>
 
@@ -82,8 +82,8 @@
         </div>
 
         <div class="popup menu" id="menu" role="menu" aria-label="Network Speed Monitor" data-replica hidden>
-          <button type="button" role="menuitem" tabindex="-1" class="sub">Adapter</button>
-          <button type="button" role="menuitem" tabindex="-1" class="sub">Units</button>
+          <button type="button" role="menuitem" tabindex="-1" class="sub" aria-haspopup="menu" aria-expanded="false" aria-controls="m-adapter">Adapter</button>
+          <button type="button" role="menuitem" tabindex="-1" class="sub" aria-haspopup="menu" aria-expanded="false" aria-controls="m-units">Units</button>
           <button type="button" role="menuitemcheckbox" tabindex="-1" aria-checked="true" id="m-graph">Show graph</button>
           <button type="button" role="menuitemcheckbox" tabindex="-1" aria-checked="false" id="m-letters">Use letters (U/D)</button>
           <hr>
@@ -91,6 +91,15 @@
           <button type="button" role="menuitem" tabindex="-1" id="m-settings">Settings…</button>
           <hr>
           <button type="button" role="menuitem" tabindex="-1" id="m-exit">Exit</button>
+        </div>
+        <div class="popup menu submenu" id="m-adapter" role="menu" aria-label="Adapter" data-replica hidden>
+          <button type="button" role="menuitemradio" tabindex="-1" aria-checked="true">Automatic</button>
+          <button type="button" role="menuitemradio" tabindex="-1" aria-checked="false">Ethernet</button>
+          <button type="button" role="menuitemradio" tabindex="-1" aria-checked="false">Wi-Fi</button>
+        </div>
+        <div class="popup menu submenu radio" id="m-units" role="menu" aria-label="Units" data-replica hidden>
+          <button type="button" role="menuitemradio" tabindex="-1" aria-checked="false" data-units="bits">Bits</button>
+          <button type="button" role="menuitemradio" tabindex="-1" aria-checked="true" data-units="bytes">Bytes</button>
         </div>
 
         <div class="popup report report-dark" id="report-popup" role="dialog" aria-label="Network usage report, example" data-replica hidden>
@@ -113,7 +122,7 @@
         <p>It puts your current upload and download speed on the taskbar, next to the notification area. Left-click it for the usage report; right-click it for the options.</p>
         <dl class="facts">
           <dt>The readout</dt>
-          <dd><b class="up">Upload</b> on the top line, <b class="down">download</b> on the bottom, updated every second. An optional graph shows the last minute. It follows your taskbar’s light or dark theme.</dd>
+          <dd><span class="mark-up">Upload</span> on the top line, <span class="mark-down">download</span> on the bottom, updated every second. An optional graph shows the last minute. It follows your taskbar’s light or dark theme.</dd>
           <dt>Adapter</dt>
           <dd>Automatic mode follows whichever adapter carries your internet traffic. You can also pin one adapter and see only its traffic.</dd>
           <dt>Units</dt>
@@ -129,7 +138,7 @@
     <section class="section" id="report">
       <div class="read">
         <h2>The usage report</h2>
-        <p>Left-click the readout to see how much data you’ve used. Pick a period, from today to all time or a custom range, and see it four ways: a summary, a day-by-day timeline, and totals for each adapter and each Wi-Fi network. Export CSV… saves the period to a file.</p>
+        <p>Left-click the readout to see how much data you’ve used. Pick a period, from today to all time or a custom range, and see it four ways: a summary, a timeline, and totals for each adapter and each Wi-Fi network. Export CSV… saves the period to a file.</p>
       </div>
       <figure class="report-figure">
         <div class="report report-auto report-window" role="group" aria-label="Network usage report, example" data-replica>
@@ -139,7 +148,7 @@
             <span class="cap"><svg viewBox="0 0 10 10" width="10" height="10"><path d="M.5 .5h9v9h-9z" stroke="currentColor" fill="none"/></svg></span>
             <span class="cap"><svg viewBox="0 0 10 10" width="10" height="10"><path d="m0 0 10 10M10 0 0 10" stroke="currentColor"/></svg></span>
           </div>
-          <div class="report-body" data-report-example></div>
+          <div class="report-body" data-report-example><noscript><p class="r-muted">This example report needs JavaScript to show its tabs and numbers.</p></noscript></div>
         </div>
         <figcaption>Example data for October 2026, not from a real PC. The tabs work; the other controls don’t.</figcaption>
       </figure>
@@ -158,14 +167,14 @@
           <ul>
             <li>No telemetry: no analytics, no crash reports, no update checks, no accounts.</li>
             <li>Your history and settings stay on your PC, in <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code>, as <code>usage.db</code> and <code>settings.ini</code>.</li>
-            <li>The history holds bytes received and sent per hour, with the adapter’s name and type and the name Windows gives the network, usually the Wi-Fi name. It doesn’t record what you browse, which apps used the traffic, or any content.</li>
+            <li>The history holds bytes received and sent per hour, with the adapter’s name and type and the name Windows gives the network (for Wi-Fi, usually its own name). It doesn’t record what you browse, which apps used the traffic, or any content.</li>
           </ul>
           <p><a href="privacy.html">The privacy page</a> has the details, including how to delete your data.</p>
         </div>
         <aside class="aside" aria-labelledby="check-title">
           <h3 id="check-title">Check it yourself</h3>
           <p>The release workflow stops before publishing anything if the app imports one of the Windows networking libraries: ws2_32, winhttp, wininet or urlmon (<a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/tools/check_imports.ps1">the check</a>).</p>
-          <p>To see what it imports, open the Developer Command Prompt that comes with Visual Studio and run:</p>
+          <p>To see what it imports, open the Developer Command Prompt that comes with Visual Studio and run this (the path is right if you kept the default folder):</p>
           <p><code>dumpbin /imports "%LOCALAPPDATA%\<wbr>Programs\<wbr>NetworkSpeedMonitor\<wbr>NetworkSpeedMonitor.exe"</code></p>
           <p>You’ll see iphlpapi.dll in the list. The app uses it to read the adapters’ byte counters.</p>
         </aside>
@@ -182,7 +191,7 @@
         </ul>
         <p>Not sure which? Settings &gt; System &gt; About shows it under System type.</p>
         <p>The installers aren’t code-signed yet. Signing has been applied for through SignPath and starts once it’s approved; until then, Windows SmartScreen may warn you before the installer runs. <a href="verify.html">Verify a download</a> explains the warning and how to check the file against the release’s SHA256 hashes.</p>
-        <p>A winget package is coming once it’s published.</p>
+        <p>There’s no winget package yet; it will be listed here once it’s published.</p>
         <p>To uninstall, use Installed apps in Settings (Apps &amp; features on Windows 10). The uninstaller asks whether to delete your usage history as well; a silent uninstall keeps it.</p>
       </div>
     </section>

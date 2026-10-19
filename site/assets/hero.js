@@ -121,7 +121,8 @@
       bars += `<span class="r-slot" title="${esc(tip)}">` + (sum(d) > 0
         ? `<span class="r-col" style="height:${pct(sum(d))}"><span class="r-tx" style="flex-grow:${d.tx}"></span><span class="r-rx" style="flex-grow:${d.rx}"></span></span>`
         : "") + `</span>`;
-      // AxisLabels: "MMM d" on the first bar, then the day number; LabelStep thins them to one a week.
+      // AxisLabels: "MMM d" on the first bar, then the day number. One label a week is a fixed simplification
+      // of LabelStep, which picks 1, 2, 7, 14 or 28 days from the bar and label widths.
       const label = day === 1 ? dateOf(day).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : String(day);
       xLabels += `<span>${(day - 1) % 7 === 0 ? esc(label) : ""}</span>`;
     }
@@ -222,6 +223,7 @@
   }
 
   const SAMPLES = 60; // kGraphSamples
+  let bits = false; // Units: Bytes (the default) or Bits
   const rx = [], tx = [];
   for (let i = 0; i < SAMPLES; i++) { const s = sample(); rx.push(s.rx); tx.push(s.tx); }
 
@@ -236,8 +238,9 @@
     }).join(" ");
     $("g-rx").setAttribute("points", pts(rx));
     $("g-tx").setAttribute("points", pts(tx));
-    $("v-up").textContent = fmt(tx[tx.length - 1]);
-    $("v-down").textContent = fmt(rx[rx.length - 1]);
+    const speed = bits ? fmtBits : fmt;
+    $("v-up").textContent = speed(tx[tx.length - 1]);
+    $("v-down").textContent = speed(rx[rx.length - 1]);
   }
 
   function clock() {
@@ -293,6 +296,7 @@
     const r = readout.getBoundingClientRect(), bar = taskbar.getBoundingClientRect();
     const right = Math.min(bar.right - r.right, bar.width - menu.offsetWidth - 8);
     menu.style.setProperty("--pop-right", Math.max(8, right) + "px");
+    for (const s of subs) if (!s.list.hidden) placeSub(s);
   }
   function layout() { sizeText(); lead(); }
   addEventListener("resize", () => { setHead(); lead(); });
@@ -315,10 +319,43 @@
   const isOpen = (el) => !el.hidden;
   let opener = readout; // focus goes back here when a popup closes
 
+  // Submenus (Adapter, Units): beside the menu, on its left like the real one near the screen edge, or on
+  // its right, with the first item level with the parent item; above the menu when neither side has room (phones).
+  const subs = menuItems.filter((b) => b.hasAttribute("aria-haspopup"))
+    .map((item) => ({ item, list: $(item.getAttribute("aria-controls")) }));
+  const subItems = (list) => [...list.querySelectorAll('[role^="menuitem"]')];
+  function placeSub({ item, list }) {
+    const bar = taskbar.getBoundingClientRect(), m = menu.getBoundingClientRect(), it = item.getBoundingClientRect();
+    const w = list.offsetWidth, h = list.offsetHeight;
+    let left = m.left - bar.left - w + 3, top = it.top - bar.top - 5; // 4 px menu padding + 1 px border
+    if (left < 8) left = m.right - bar.left - 3;
+    if (left + w > bar.width - 8) {
+      left = Math.min(Math.max(8, it.left - bar.left + 24), bar.width - w - 8);
+      top = m.top - bar.top - h + 1;
+    }
+    list.style.left = left + "px";
+    list.style.top = top + "px";
+  }
+  function closeSubs(except) {
+    for (const s of subs) {
+      if (s === except || s.list.hidden) continue;
+      s.list.hidden = true;
+      s.item.setAttribute("aria-expanded", "false");
+    }
+  }
+  function openSub(s, focusFirst) {
+    closeSubs(s);
+    s.list.hidden = false;
+    s.item.setAttribute("aria-expanded", "true");
+    placeSub(s);
+    if (focusFirst) subItems(s.list)[0].focus({ preventScroll: true });
+  }
+
   function show(el, from) {
     if (from) opener = from;
     if (isOpen(el)) return; // a second open (contextmenu after Shift+F10, long-press) changes nothing
     for (const p of [menu, report]) if (p !== el) p.hidden = true;
+    closeSubs();
     el.hidden = false;
     if (el === menu) placeMenu();
     el.classList.remove("opening"); void el.offsetWidth; el.classList.add("opening");
@@ -328,6 +365,7 @@
     if (first) first.focus({ preventScroll: true });
   }
   function hideAll() {
+    closeSubs();
     menu.hidden = report.hidden = true;
     note.style.visibility = "";
     sync();
@@ -364,16 +402,47 @@
   });
   showMenuBtn.addEventListener("click", () => { if (isOpen(menu)) hideAll(); else show(menu, showMenuBtn); });
 
-  // Menu keyboard: arrows, Home and End move; Tab leaves the menu.
+  // Menu keyboard: arrows, Home and End move; Right (or Enter) opens a submenu; Tab leaves the menu.
   menu.addEventListener("keydown", (e) => {
     const i = menuItems.indexOf(document.activeElement);
-    const go = (n) => { e.preventDefault(); menuItems[(n + menuItems.length) % menuItems.length].focus(); };
+    const go = (n) => { e.preventDefault(); closeSubs(); menuItems[(n + menuItems.length) % menuItems.length].focus(); };
+    const sub = subs.find((s) => s.item === document.activeElement);
     if (e.key === "ArrowDown") go(i + 1);
     else if (e.key === "ArrowUp") go(i < 0 ? -1 : i - 1);
     else if (e.key === "Home") go(0);
     else if (e.key === "End") go(-1);
+    else if (e.key === "ArrowRight" && sub) { e.preventDefault(); openSub(sub, true); }
     else if (e.key === "Tab") { e.preventDefault(); closeToOpener(); }
   });
+  // Submenu keyboard: the same moves; Left or Esc goes back to the parent item.
+  for (const s of subs) {
+    s.item.addEventListener("click", () => openSub(s, true));
+    s.item.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") openSub(s, false); });
+    s.list.addEventListener("keydown", (e) => {
+      const items = subItems(s.list), i = items.indexOf(document.activeElement);
+      const go = (n) => { e.preventDefault(); items[(n + items.length) % items.length].focus(); };
+      if (e.key === "ArrowDown") go(i + 1);
+      else if (e.key === "ArrowUp") go(i < 0 ? -1 : i - 1);
+      else if (e.key === "Home") go(0);
+      else if (e.key === "End") go(-1);
+      else if (e.key === "ArrowLeft" || e.key === "Escape") {
+        e.preventDefault(); e.stopPropagation(); // Esc closes only the submenu
+        closeSubs(); s.item.focus();
+      } else if (e.key === "Tab") { e.preventDefault(); closeToOpener(); }
+    });
+    // Choosing moves the check mark and closes the menus; Bits switches the readout to bits per second.
+    s.list.addEventListener("click", (e) => {
+      const pick = e.target.closest('[role="menuitemradio"]');
+      if (!pick) return;
+      subItems(s.list).forEach((b) => b.setAttribute("aria-checked", String(b === pick)));
+      if (pick.dataset.units) { bits = pick.dataset.units === "bits"; draw(); }
+      closeToOpener();
+    });
+  }
+  // Pointing at another item of the menu closes an open submenu, as in Windows.
+  for (const b of menuItems) {
+    if (!b.hasAttribute("aria-haspopup")) b.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") closeSubs(); });
+  }
 
   $("m-report").addEventListener("click", () => show(report));
   $("m-settings").addEventListener("click", closeToOpener);

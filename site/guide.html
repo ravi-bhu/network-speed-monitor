@@ -48,7 +48,7 @@
 
       <section id="readout">
         <h2>The readout</h2>
-        <p>After you install it, the readout sits on your taskbar, next to the notification area. The top line is your <b class="up">upload</b> speed and the bottom line your <b class="down">download</b> speed, updated every second. The small graph beside them shows the last minute. It follows your taskbar’s light or dark theme.</p>
+        <p>After you install it, the readout sits on your taskbar, next to the notification area. The top line is your <span class="mark-up">upload</span> speed and the bottom line your <span class="mark-down">download</span> speed, updated every second. The small graph beside them shows the last minute. It follows your taskbar’s light or dark theme.</p>
         <p>Hover over it to see which adapter it’s counting. Left-click it to open the usage report. Right-click it for the menu.</p>
       </section>
 
@@ -154,7 +154,7 @@
       <section id="uninstall">
         <h2>Uninstalling</h2>
         <p>Open Settings, then Apps, and find Network Speed Monitor under Installed apps (Apps &amp; features on Windows 10). Choose Uninstall.</p>
-        <p>The uninstaller closes the app if it’s running, then asks whether to also delete your usage history. No is the default; Yes deletes the <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code> folder, with your history and settings. A silent uninstall, such as one run by winget, always keeps it. Either way, the Start with Windows entry is removed.</p>
+        <p>The uninstaller closes the app if it’s running, then asks whether to also delete your usage history. No is the default; Yes deletes the <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code> folder, with your history and settings. A silent uninstall (for example with <code>/VERYSILENT</code>, or through winget once the package is published) always keeps it. Either way, the Start with Windows entry is removed.</p>
         <p>If you kept the history and want it gone later, delete that folder yourself.</p>
       </section>
     </div>

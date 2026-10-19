@@ -203,6 +203,8 @@ def copy_rules(pages):
 VERSION_PATTERNS = (
     re.compile(r"NetworkSpeedMonitor-(\d+\.\d+\.\d+)-"),
     re.compile(r"/releases/download/v(\d+\.\d+\.\d+)/"),
+    re.compile(r"/releases/tag/v(\d+\.\d+\.\d+)"),
+    re.compile(r"(?i)\bversion (\d+\.\d+\.\d+)"),  # fine print such as "Version 0.1.0"
 )
 
 
