@@ -25,7 +25,8 @@ The policy itself (who approves signing, the privacy statement) is the "Code sig
 
 ## Turning signing on
 
-1. Apply to the SignPath Foundation for this repository (https://signpath.org/ , "Open source").
+1. Apply to the SignPath Foundation for this repository (https://signpath.org/apply). _Applied 2026-10-19,
+   after v0.1.0; waiting for their reply._
 2. In SignPath, create a project with a signing policy named `release-signing` and two artifact configurations:
    - `app`: a zip with `x64/NetworkSpeedMonitor.exe` and `arm64/NetworkSpeedMonitor.exe`; sign both exes.
    - `installers`: a zip with the `.exe` files at its root; sign them.
