@@ -271,7 +271,15 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         w.beforeQuery = [&] { ++queries; };
         w.onBoundsChanged = [&](RECT r) { bounds.push_back(r); };
         w.SetThemeOverride(ReportTheme::Light);
-        w.SetSavedRect(RECT{100, 100, 1000, 800});
+        // Place the window inside this machine's work area: CI runners have small (1024x768) screens and the
+        // report clamps a saved rect that doesn't fit, which is correct but would break exact-rect checks.
+        RECT wa{};
+        SystemParametersInfoW(SPI_GETWORKAREA, 0, &wa, 0);
+        const RECT saved{wa.left + 20, wa.top + 20, wa.left + 20 + 820, wa.top + 20 + 620};
+        const RECT moved{wa.left + 40, wa.top + 30, wa.left + 40 + 800, wa.top + 30 + 600};
+        const bool fits = wa.right - wa.left >= 880 && wa.bottom - wa.top >= 680;
+        if (!fits) MESSAGE("work area too small for exact-rect checks; skipping them");
+        w.SetSavedRect(saved);
 
         w.Show(2);
         REQUIRE(w.IsOpen());
@@ -280,7 +288,7 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         REQUIRE(hwnd);
         RECT opened{};
         GetWindowRect(hwnd, &opened);
-        CHECK(Same(opened, RECT{100, 100, 1000, 800}));
+        if (fits) CHECK(Same(opened, saved));
 
         HWND adapters = FindChild(hwnd, WC_LISTVIEWW, 0);
         HWND wifi = FindChild(hwnd, WC_LISTVIEWW, 1);
@@ -309,12 +317,15 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         CHECK(ItemText(adapters, 0) == L"Wi-Fi");
 
         // Moved, then closed: the new bounds are reported and the window is gone.
-        SetWindowPos(hwnd, nullptr, 150, 120, 850, 650, SWP_NOZORDER | SWP_NOACTIVATE);
+        SetWindowPos(hwnd, nullptr, moved.left, moved.top, moved.right - moved.left, moved.bottom - moved.top,
+                     SWP_NOZORDER | SWP_NOACTIVATE);
+        RECT movedActual{};
+        GetWindowRect(hwnd, &movedActual);  // the window's minimum size may enlarge it
         w.Close();
         CHECK_FALSE(w.IsOpen());
         CHECK_FALSE(IsWindow(hwnd));
         REQUIRE_FALSE(bounds.empty());
-        CHECK(Same(bounds.back(), RECT{150, 120, 1000, 770}));
+        CHECK(Same(bounds.back(), movedActual));
 
         // Reopening creates it again where it was.
         w.Show(0);
@@ -322,7 +333,7 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         hwnd = FindWindowW(L"NetworkSpeedMonitor.Report", nullptr);
         RECT reopened{};
         GetWindowRect(hwnd, &reopened);
-        CHECK(Same(reopened, RECT{150, 120, 1000, 770}));
+        if (fits) CHECK(Same(reopened, movedActual));
         w.Close();
     }
 }
