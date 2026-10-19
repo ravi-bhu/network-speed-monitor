@@ -20,6 +20,16 @@ usage report. It makes no network connections and sends nothing anywhere.
   isn't running is not counted.
 - Starts with Windows by default; turn that off in **Settings…**.
 
+## CSV export
+
+**Export CSV…** in the report saves the selected period, for every adapter and network, as UTF-8 with columns
+`start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes`
+(one row per hour, or per day for history older than 90 days).
+
+Network and adapter names come from outside the app (anyone can name a Wi-Fi network), so a name that starts
+with `=`, `+`, `-`, `@`, a tab or a carriage return is written with a leading `'`. Spreadsheets then show it as
+text instead of running it as a formula.
+
 ## Install
 
 Requires Windows 10 or 11 (x64 or ARM64). No administrator rights are needed; it installs per user.

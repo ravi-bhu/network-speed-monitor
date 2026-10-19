@@ -49,13 +49,13 @@ void AppendRow(std::string& out, const std::string& start, const char* granulari
     if (!networkKey.empty()) {
         if (auto it = lk.networks.find(networkKey); it != lk.networks.end()) network = ToUtf8(it->second);
     }
-    out += CsvEscape(start);                         out += ',';
+    out += CsvTextField(start);                      out += ',';
     out += granularity;                              out += ',';
     out += series == Series::Internet ? "internet" : "adapter"; out += ',';
-    out += CsvEscape(ToUtf8(adapterId));             out += ',';
-    out += CsvEscape(ToUtf8(name));                  out += ',';
+    out += CsvTextField(ToUtf8(adapterId));          out += ',';
+    out += CsvTextField(ToUtf8(name));               out += ',';
     out += KindName(kind);                           out += ',';
-    out += CsvEscape(network);                       out += ',';
+    out += CsvTextField(network);                    out += ',';
     out += std::to_string(rx);                       out += ',';
     out += std::to_string(tx);                       out += "\r\n";
 }
@@ -71,6 +71,16 @@ std::string CsvEscape(std::string_view s) {
     }
     out += '"';
     return out;
+}
+
+std::string CsvTextField(std::string_view s) {
+    // OWASP "CSV injection": a leading ' makes Excel and LibreOffice show the text instead of evaluating it.
+    if (!s.empty() && std::string_view("=+-@\t\r").find(s.front()) != std::string_view::npos) {
+        std::string quoted = "'";
+        quoted += s;
+        return CsvEscape(quoted);
+    }
+    return CsvEscape(s);
 }
 
 bool ExportCsv(const std::filesystem::path& file, UsageStore& store, UtcRange r, const TimeZone& tz) {

