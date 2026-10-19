@@ -382,6 +382,47 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; overflow
 .downloads a { font-weight: 700; }
 .downloads code { display: block; color: var(--muted); }
 
+/* ---- Supporting pages: a title, then one reading column ---- */
+
+.doc h1 { font-size: clamp(2.25rem, 4.6vw, 3.25rem); }
+.intro { margin: 0 0 2rem; font-size: clamp(1.0625rem, 1.6vw, 1.1875rem); }
+.doc section { padding-top: clamp(2.5rem, 6vw, 3.75rem); }
+.doc h2 { margin-bottom: 1rem; font-size: clamp(1.5rem, 2.8vw, 1.875rem); }
+.doc h3 { margin: 2rem 0 .5rem; font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; }
+.doc p, .doc ul, .doc ol, .doc table, .doc .code { margin: 0 0 1rem; }
+.doc ul, .doc ol { padding-left: 1.25rem; }
+.doc li + li { margin-top: .5rem; }
+.doc a:not(.btn) { color: var(--ink); text-underline-offset: 3px; }
+.doc a:not(.btn):hover { text-decoration-thickness: 2px; }
+.doc .facts { margin: 1rem 0 1rem; }
+.doc .fine { margin: 0 0 1rem; }
+
+/* On-page contents: a plain list of links between two rules. */
+.toc { margin: 0; padding: 1rem 0; border-block: 1px solid var(--rule); }
+.doc .toc h2 { margin: 0 0 .5rem; font-size: 1rem; letter-spacing: 0; line-height: 1.4; }
+.toc ul { list-style: none; margin: 0; padding: 0; columns: 2 13rem; column-gap: 2rem; }
+.doc .toc li { margin: 0; padding: .15rem 0; break-inside: avoid; }
+
+/* Code blocks scroll sideways inside themselves, never the page. */
+.code { display: flex; flex-direction: column; border-radius: 6px; background: color-mix(in srgb, var(--ink) 6%, var(--paper)); }
+.code pre { min-width: 0; margin: 0; padding: .8rem 1rem; overflow-x: auto; }
+.code pre code { font-size: .875rem; overflow-wrap: normal; white-space: pre; }
+.copy { /* under the command, so the command gets the full width */
+  align-self: flex-start; margin: -.25rem 0 .6rem 1rem; padding: .3rem .75rem; min-width: 5.5rem;
+  font: inherit; font-size: .875rem; font-weight: 500; color: var(--ink); cursor: pointer;
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 4px;
+}
+.copy:hover { border-color: var(--muted); }
+.copy[hidden] { display: none; }
+
+/* Plain data tables, ruled like the definition lists. */
+.table-wrap { overflow-x: auto; margin: 0 0 1rem; }
+.doc .table-wrap table { margin: 0; }
+.cols { width: 100%; border-collapse: collapse; font-size: .95rem; }
+.cols th, .cols td { padding: .6rem 1rem .6rem 0; text-align: left; vertical-align: top; border-top: 1px solid var(--rule); }
+.cols thead th { border-top: 0; font-weight: 700; }
+.cols td:first-child { white-space: nowrap; }
+
 @media (max-height: 45rem), (max-width: 50rem) { /* short or narrow screens: keep the taskbar in view */
   .hero-copy { padding-block: .5rem; }
   .hero h1 { font-size: clamp(2.25rem, min(6.4vw, 8.5vh), 5.75rem); }

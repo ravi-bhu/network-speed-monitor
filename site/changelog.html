@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Changelog - Network Speed Monitor</title>
+<meta name="description" content="What changed in each Network Speed Monitor release, newest first.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site-head">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="5" fill="#202020"/><path d="M8 15.5V7.5M5.5 10 8 7.5 10.5 10" stroke="#f0a35e" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 10.5v8M14.5 16l2.5 2.5 2.5-2.5" stroke="#5eb8f0" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Network Speed Monitor
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="guide.html">Guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="changelog.html" aria-current="page">Changelog</a>
+      <a href="verify.html">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source</a>
+    </nav>
+  </header>
+</div>
+
+<main id="main" class="doc">
+  <div class="wrap">
+    <div class="read">
+      <h1>Changelog</h1>
+      <p class="intro">What changed in each release, newest first. Each one links to its GitHub release, where you’ll find the installers and <code>SHA256SUMS.txt</code>.</p>
+
+      <!-- Add each new release above this one, by hand. -->
+      <section id="v0.1.0" aria-labelledby="v0.1.0-title">
+        <h2 id="v0.1.0-title">Version 0.1.0</h2>
+        <p class="fine">Released <time datetime="2026-10-19">19 October 2026</time></p>
+        <p>The first release.</p>
+        <ul>
+          <li>Installers for x64 and ARM64, for Windows 10 and 11. They install for your user account only, so they need no administrator rights.</li>
+          <li>The taskbar readout: upload and download speed every second, and an optional one-minute graph, in your taskbar’s light or dark theme. Bytes or bits, arrows or U/D letters, the primary taskbar or all of them.</li>
+          <li>Automatic adapter mode, which follows your internet traffic, or one adapter of your choice.</li>
+          <li>The usage report, with Summary, Timeline, Adapters and Wi-Fi networks tabs, nine periods and a custom range.</li>
+          <li>Renaming and hiding adapters, and clearing the history of one adapter, one network or everything.</li>
+          <li>CSV export. Names that a spreadsheet could run as a formula are written as text.</li>
+          <li>Usage history in hourly rows for 90 days, then daily.</li>
+          <li>Starts with Windows, which you can turn off in Settings.</li>
+          <li>The release workflow stops if the app imports Winsock, WinHTTP, WinINet or URLMon.</li>
+        </ul>
+        <p>Not in this release: code signing, which has been applied for, and the winget package.</p>
+        <p><a href="https://github.com/ravi-bhu/network-speed-monitor/releases/tag/v0.1.0">Version 0.1.0 on GitHub</a></p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="wrap">
+  <footer class="site-foot">
+    <nav aria-label="Footer">
+      <a href="guide.html">Guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="changelog.html" aria-current="page">Changelog</a>
+      <a href="verify.html">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source on GitHub</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/LICENSE">MIT licence</a>
+    </nav>
+    <p>This site sets no cookies and makes no third-party requests.</p>
+  </footer>
+</div>
+
+</body>
+</html>

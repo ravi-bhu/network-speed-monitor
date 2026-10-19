@@ -12,9 +12,6 @@ from pathlib import Path
 
 SITE = Path(__file__).resolve().parent.parent / "site"
 
-# Pages that do not exist yet. Remove once Task 4 lands (Task 4 deletes this constant).
-PENDING_PAGES = {"guide.html", "privacy.html", "changelog.html", "verify.html"}
-
 VOID = {"meta", "link", "br", "img", "hr", "input", "source", "area", "base", "col", "wbr"}
 
 
@@ -24,6 +21,7 @@ class Page(HTMLParser):
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.ids = set()
+        self.dup_ids = []       # id values seen more than once, in document order
         self.refs = []          # (attr, value) for href/src
         self.links = []         # (rel, href) for <link>
         self.html_lang = None
@@ -43,6 +41,8 @@ class Page(HTMLParser):
         if tag == "html":
             self.html_lang = a.get("lang")
         if a.get("id"):
+            if a["id"] in self.ids:
+                self.dup_ids.append(a["id"])
             self.ids.add(a["id"])
         for k in ("href", "src"):
             if k in a:
@@ -130,8 +130,6 @@ def internal_links_resolve(pages):
                 problems.append(f"{rel(path)}: {attr}={val!r} is document-relative; 404.html must use root-absolute URLs")
                 continue
             if target:
-                if target in PENDING_PAGES:
-                    continue
                 dest = ((SITE if root_abs else path.parent) / target).resolve()
                 if not dest.is_file() or SITE not in dest.parents:
                     problems.append(f"{rel(path)}: {attr}={val!r} does not resolve to a file under site/")
@@ -171,6 +169,9 @@ def no_third_party_requests(pages):
 def page_basics(pages):
     problems = []
     for path, p in pages.items():
+        # Static HTML only: ids that scripts create at run time are not seen here.
+        for dup in dict.fromkeys(p.dup_ids):
+            problems.append(f"{rel(path)}: id={dup!r} is used more than once")
         if p.html_lang != "en":
             problems.append(f'{rel(path)}: <html> needs lang="en"')
         if not (p.title or "").strip():

@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide - Network Speed Monitor</title>
+<meta name="description" content="How to use Network Speed Monitor: the taskbar readout and its menu, settings, the usage report, CSV export, starting with Windows and uninstalling.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site-head">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="5" fill="#202020"/><path d="M8 15.5V7.5M5.5 10 8 7.5 10.5 10" stroke="#f0a35e" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 10.5v8M14.5 16l2.5 2.5 2.5-2.5" stroke="#5eb8f0" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Network Speed Monitor
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="guide.html" aria-current="page">Guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="verify.html">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source</a>
+    </nav>
+  </header>
+</div>
+
+<main id="main" class="doc">
+  <div class="wrap">
+    <div class="read">
+      <h1>Guide</h1>
+      <p class="intro">How to use Network Speed Monitor, from the readout on your taskbar to the CSV export. Names in bold are what the app shows.</p>
+
+      <nav class="toc" aria-labelledby="toc-title">
+        <h2 id="toc-title">On this page</h2>
+        <ul>
+          <li><a href="#readout">The readout</a></li>
+          <li><a href="#menu">The right-click menu</a></li>
+          <li><a href="#settings">Settings</a></li>
+          <li><a href="#report">The usage report</a></li>
+          <li><a href="#adapters">Renaming, hiding and clearing</a></li>
+          <li><a href="#csv">Exporting to CSV</a></li>
+          <li><a href="#startup">Starting with Windows</a></li>
+          <li><a href="#uninstall">Uninstalling</a></li>
+        </ul>
+      </nav>
+
+      <section id="readout">
+        <h2>The readout</h2>
+        <p>After you install it, the readout sits on your taskbar, next to the notification area. The top line is your <b class="up">upload</b> speed and the bottom line your <b class="down">download</b> speed, updated every second. The small graph beside them shows the last minute. It follows your taskbar’s light or dark theme.</p>
+        <p>Hover over it to see which adapter it’s counting. Left-click it to open the usage report. Right-click it for the menu.</p>
+      </section>
+
+      <section id="menu">
+        <h2>The right-click menu</h2>
+        <dl class="facts">
+          <dt>Adapter</dt>
+          <dd><b>Automatic</b>, the default, follows whichever adapter carries your internet traffic, and switches when that changes. Or pick one adapter to see only its traffic.</dd>
+          <dt>Units</dt>
+          <dd><b>Bytes</b> per second, the default, or <b>Bits</b>.</dd>
+          <dt>Show graph</dt>
+          <dd>Shows or hides the one-minute graph. On by default.</dd>
+          <dt>Use letters (U/D)</dt>
+          <dd>Labels the lines U: and D: instead of arrows.</dd>
+          <dt>Open report…</dt>
+          <dd>Opens the usage report, the same as a left-click.</dd>
+          <dt>Settings…</dt>
+          <dd>Opens the settings window, described below.</dd>
+          <dt>Exit</dt>
+          <dd>Closes the app. Nothing is recorded while it’s closed.</dd>
+        </dl>
+      </section>
+
+      <section id="settings">
+        <h2>Settings</h2>
+        <p><b>Settings…</b> on the menu opens a small window with the same options as the menu, and a few more:</p>
+        <ul>
+          <li><b>Start with Windows</b>, on by default.</li>
+          <li><b>Adapter</b>, <b>Units</b>, <b>Show mini graph</b> and <b>Use letters (U/D)</b>, as on the menu.</li>
+          <li><b>Show on</b>: <b>Primary taskbar only</b>, the default, or <b>All taskbars</b> if you use more than one monitor.</li>
+          <li><b>Manage adapters…</b> saves your changes and opens the report on its Adapters tab.</li>
+          <li><b>Open data folder</b> opens <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code>, where your history and settings are kept.</li>
+        </ul>
+        <p>At the bottom are the version number and a <b>Source code</b> link, which opens the project on GitHub in your browser.</p>
+      </section>
+
+      <section id="report">
+        <h2>The usage report</h2>
+        <p>Left-click the readout, or choose <b>Open report…</b>, to see how much data you’ve used.</p>
+        <h3>Periods</h3>
+        <p>The period picker offers <b>Today</b>, <b>Yesterday</b>, <b>This week</b>, <b>Last week</b>, <b>This month</b>, <b>Last month</b>, <b>Last 30 days</b>, <b>This year</b>, <b>All time</b> and <b>Custom range…</b>, which asks for a start and end date. The report opens on This month. Weeks start on the day your Windows region settings say they do.</p>
+        <h3>Tabs</h3>
+        <dl class="facts">
+          <dt>Summary</dt>
+          <dd>Totals for today, this week, this month and the period you picked, then your busiest day in the period, and your top three adapters and Wi-Fi networks.</dd>
+          <dt>Timeline</dt>
+          <dd>Received and sent data as bars. Each bar is an hour for periods up to 25 hours long, a day for periods up to 92 days, and a month for anything longer. A short period that starts more than 90 days ago gets day bars, because hourly rows aren’t kept that long. Hover over a bar to see its numbers.</dd>
+          <dt>Adapters</dt>
+          <dd>Received, sent and total data for each adapter. Click a column heading to sort by it.</dd>
+          <dt>Wi-Fi networks</dt>
+          <dd>The same for each Wi-Fi network you used. Traffic on a network Windows couldn’t name is listed as <b>Unknown Wi-Fi network</b>.</dd>
+        </dl>
+        <p>Summary and Timeline count your internet traffic once. The Adapters and Wi-Fi networks tabs count each adapter’s own traffic, so, as the report says, their rows can add up to more than your internet total: a VPN and the Wi-Fi it runs over both count.</p>
+        <h3>What gets recorded</h3>
+        <p>The app records your usage in hourly rows while it runs. Hourly rows are kept for 90 days, then rolled up into one row per day. Traffic while the app isn’t running is not counted, so a day when it was closed shows less than you used.</p>
+      </section>
+
+      <section id="adapters">
+        <h2>Renaming, hiding and clearing</h2>
+        <p>On the Adapters tab, right-click an adapter, or select it and press Shift+F10, for these:</p>
+        <dl class="facts">
+          <dt>Rename…</dt>
+          <dd>Gives the adapter a name of your own. The new name shows in the report, on the menu and when you hover over the readout. Leave the name empty to go back to the Windows name.</dd>
+          <dt>Hide</dt>
+          <dd>Takes the adapter out of the Adapters tab, the Summary’s top adapters and the right-click Adapter list. Nothing is deleted, and its traffic still counts in your internet totals. To bring it back, tick <b>Show hidden adapters</b>, right-click it and choose <b>Unhide</b>.</dd>
+          <dt>Clear this adapter’s history…</dt>
+          <dd>Deletes everything recorded for that adapter.</dd>
+        </dl>
+        <p>On the Wi-Fi networks tab, right-click a network for <b>Clear this network’s history…</b>. To delete everything, use <b>Clear all history…</b> at the top of the report. The app asks before it clears anything, and a clear can’t be undone.</p>
+      </section>
+
+      <section id="csv">
+        <h2>Exporting to CSV</h2>
+        <p><b>Export CSV…</b> in the report saves the selected period to a file you choose, for every adapter and network. The file is UTF-8 text with one row per hour, or per day for history older than 90 days. It has these columns:</p>
+        <div class="table-wrap">
+          <table class="cols">
+            <thead>
+              <tr><th scope="col">Column</th><th scope="col">What it holds</th></tr>
+            </thead>
+            <tbody>
+              <tr><td><code>start_local</code></td><td>When the hour or day starts, in your local time: <code>2026-10-19 14:00</code> or <code>2026-10-19</code>.</td></tr>
+              <tr><td><code>granularity</code></td><td><code>hour</code> or <code>day</code>.</td></tr>
+              <tr><td><code>series</code></td><td><code>internet</code> or <code>adapter</code>, explained below.</td></tr>
+              <tr><td><code>adapter_id</code></td><td>The ID Windows gives the adapter, a GUID in braces.</td></tr>
+              <tr><td><code>adapter_name</code></td><td>Your name for the adapter if you renamed it, otherwise the Windows name.</td></tr>
+              <tr><td><code>adapter_kind</code></td><td><code>wifi</code>, <code>ethernet</code>, <code>virtual</code> or <code>other</code>.</td></tr>
+              <tr><td><code>network</code></td><td>The name Windows gives the network; for Wi-Fi, usually the network’s own name. Empty when Windows has no name for it.</td></tr>
+              <tr><td><code>received_bytes</code></td><td>Bytes received in that hour or day.</td></tr>
+              <tr><td><code>sent_bytes</code></td><td>Bytes sent in that hour or day.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The <code>series</code> column says what a row counts. <code>internet</code> rows are your internet traffic, through whichever adapter carried it. <code>adapter</code> rows are each adapter’s own traffic, so a VPN and the Wi-Fi it runs over both count. The two overlap, so don’t add up rows across series: filter on one first. The <code>internet</code> rows match the report’s headline numbers.</p>
+        <p>Network and adapter names come from outside the app; anyone can name a Wi-Fi network. So a name that starts with <code>=</code>, <code>+</code>, <code>-</code>, <code>@</code>, a tab or a carriage return is written with a <code>'</code> in front. Spreadsheets then show it as text instead of running it as a formula.</p>
+      </section>
+
+      <section id="startup">
+        <h2>Starting with Windows</h2>
+        <p>The app starts when you sign in to Windows. That’s on by default. To turn it off, open <b>Settings…</b> from the right-click menu and untick <b>Start with Windows</b>.</p>
+        <p>The setting is a value named <code>NetworkSpeedMonitor</code> under <code>HKEY_CURRENT_USER\<wbr>Software\<wbr>Microsoft\<wbr>Windows\<wbr>CurrentVersion\<wbr>Run</code>, so it needs no administrator rights.</p>
+      </section>
+
+      <section id="uninstall">
+        <h2>Uninstalling</h2>
+        <p>Open Settings, then Apps, and find Network Speed Monitor under Installed apps (Apps &amp; features on Windows 10). Choose Uninstall.</p>
+        <p>The uninstaller closes the app if it’s running, then asks whether to also delete your usage history. No is the default; Yes deletes the <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code> folder, with your history and settings. A silent uninstall, such as one run by winget, always keeps it. Either way, the Start with Windows entry is removed.</p>
+        <p>If you kept the history and want it gone later, delete that folder yourself.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="wrap">
+  <footer class="site-foot">
+    <nav aria-label="Footer">
+      <a href="guide.html" aria-current="page">Guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="verify.html">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source on GitHub</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/LICENSE">MIT licence</a>
+    </nav>
+    <p>This site sets no cookies and makes no third-party requests.</p>
+  </footer>
+</div>
+
+</body>
+</html>

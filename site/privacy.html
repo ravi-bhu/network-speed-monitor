@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy - Network Speed Monitor</title>
+<meta name="description" content="Network Speed Monitor makes no network connections and keeps your usage history on your PC. What it stores, where, how to delete it, and what this website collects.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site-head">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="5" fill="#202020"/><path d="M8 15.5V7.5M5.5 10 8 7.5 10.5 10" stroke="#f0a35e" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 10.5v8M14.5 16l2.5 2.5 2.5-2.5" stroke="#5eb8f0" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Network Speed Monitor
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="guide.html">Guide</a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="verify.html">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source</a>
+    </nav>
+  </header>
+</div>
+
+<main id="main" class="doc">
+  <div class="wrap">
+    <div class="read">
+      <h1>Privacy</h1>
+      <p class="intro">Network Speed Monitor keeps everything on your PC. It makes no network connections and sends nothing anywhere.</p>
+
+      <section id="app">
+        <h2>The app</h2>
+        <dl class="facts">
+          <dt>No network connections</dt>
+          <dd>The app never connects to the internet or to any other computer. It only reads the byte counters Windows already keeps for your network adapters. It doesn’t import any Windows networking library (Winsock, WinHTTP, WinINet or URLMon), and every release is <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/tools/check_imports.ps1">checked for that</a> before it’s published. The <b>Source code</b> link in Settings opens GitHub in your browser; the app itself doesn’t fetch it.</dd>
+          <dt>No telemetry</dt>
+          <dd>No analytics, no crash reports, no update checks, no accounts.</dd>
+          <dt>Where your data is</dt>
+          <dd>A usage history database, <code>usage.db</code>, and a settings file, <code>settings.ini</code>, in <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code>.</dd>
+          <dt>What the history holds</dt>
+          <dd>Bytes received and sent per hour, rolled up to days after 90 days. With each row: the adapter’s name and type, and the name Windows gives the network it was connected to, where Windows provides one. For Wi-Fi that’s usually the network’s name (its SSID); wired and other networks get a name from Windows too. It doesn’t record what you browse, which apps used the traffic, or any content.</dd>
+          <dt>Damaged history</dt>
+          <dd>If the database is ever found damaged, the app moves it aside as <code>usage.corrupt-&lt;date and time&gt;.db</code> in the same folder and starts a new one. Those copies stay there until you delete them.</dd>
+          <dt>Start with Windows</dt>
+          <dd>A value named <code>NetworkSpeedMonitor</code> under <code>HKEY_CURRENT_USER\<wbr>Software\<wbr>Microsoft\<wbr>Windows\<wbr>CurrentVersion\<wbr>Run</code>. It needs no administrator rights.</dd>
+          <dt>Exporting</dt>
+          <dd>Exporting the report to CSV writes a file only where you choose to save it.</dd>
+        </dl>
+      </section>
+
+      <section id="delete">
+        <h2>Deleting your data</h2>
+        <ul>
+          <li><b>In the app:</b> open the report and choose <b>Clear all history…</b>. To clear a single adapter or Wi-Fi network, right-click its row on the Adapters or Wi-Fi networks tab.</li>
+          <li><b>With the uninstaller:</b> an interactive uninstall asks whether to also delete your usage history. A silent uninstall, for example <code>winget uninstall</code>, always keeps it.</li>
+          <li><b>By hand:</b> exit the app, then delete the folder <code>%LOCALAPPDATA%\<wbr>NetworkSpeedMonitor</code>.</li>
+        </ul>
+      </section>
+
+      <section id="website">
+        <h2>This website</h2>
+        <p>These are static pages hosted on GitHub Pages. They set no cookies, run no analytics, and load nothing from any other site: the fonts are served from here too. The scripts here only run the taskbar replica on the home page and the Copy buttons on <a href="verify.html">Verify a download</a>; they send nothing.</p>
+        <p>GitHub, as the host, may keep standard server logs of visits, such as IP addresses. That is covered by <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub’s privacy statement</a>, not by this project.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="wrap">
+  <footer class="site-foot">
+    <nav aria-label="Footer">
+      <a href="guide.html">Guide</a>
+      <a href="privacy.html" aria-current="page">Privacy</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="verify.html">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source on GitHub</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/LICENSE">MIT licence</a>
+    </nav>
+    <p>This site sets no cookies and makes no third-party requests.</p>
+  </footer>
+</div>
+
+</body>
+</html>

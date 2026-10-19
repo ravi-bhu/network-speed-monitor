@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Verify a download - Network Speed Monitor</title>
+<meta name="description" content="Why Network Speed Monitor's installers aren't signed yet, how to check an installer against the release's SHA256 hashes, and what the SmartScreen warning means.">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="assets/site.css">
+</head>
+<body>
+
+<div class="wrap">
+  <header class="site-head">
+    <a class="brand" href="index.html">
+      <svg viewBox="0 0 26 26" aria-hidden="true"><rect width="26" height="26" rx="5" fill="#202020"/><path d="M8 15.5V7.5M5.5 10 8 7.5 10.5 10" stroke="#f0a35e" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path d="M17 10.5v8M14.5 16l2.5 2.5 2.5-2.5" stroke="#5eb8f0" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      Network Speed Monitor
+    </a>
+    <nav class="site-nav" aria-label="Site">
+      <a href="guide.html">Guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="verify.html" aria-current="page">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source</a>
+    </nav>
+  </header>
+</div>
+
+<main id="main" class="doc">
+  <div class="wrap">
+    <div class="read">
+      <h1>Verify a download</h1>
+      <p class="intro">The installers aren’t code-signed yet. Until they are, you can check that the file you downloaded is exactly the one the release published, by comparing its SHA256 hash with the list that comes with every release.</p>
+
+      <section id="unsigned">
+        <h2>Why it isn’t signed yet</h2>
+        <p>Signing will come through the <a href="https://signpath.org/">SignPath Foundation</a>, which signs open-source projects for free. The project applied on 19 October 2026, after version 0.1.0 was released, and is waiting for a reply. Until it’s approved, releases are unsigned.</p>
+        <p>Once signing is on, the app and both installers are signed before the hashes are written, so <code>SHA256SUMS.txt</code> lists the signed files.</p>
+      </section>
+
+      <section id="hash">
+        <h2>Check the hash</h2>
+        <ol>
+          <li>From the <a href="https://github.com/ravi-bhu/network-speed-monitor/releases/tag/v0.1.0">release page</a>, download the installer, <a href="https://github.com/ravi-bhu/network-speed-monitor/releases/download/v0.1.0/NetworkSpeedMonitor-0.1.0-x64-setup.exe">x64</a> or <a href="https://github.com/ravi-bhu/network-speed-monitor/releases/download/v0.1.0/NetworkSpeedMonitor-0.1.0-arm64-setup.exe">ARM64</a>, and <a href="https://github.com/ravi-bhu/network-speed-monitor/releases/download/v0.1.0/SHA256SUMS.txt">SHA256SUMS.txt</a> into the same folder.</li>
+          <li>Open PowerShell in that folder: open the folder in File Explorer, type <code>powershell</code> in the address bar and press Enter.</li>
+          <li>
+            <p>Run this for the x64 installer:</p>
+            <div class="code"><pre><code>Get-FileHash .\NetworkSpeedMonitor-0.1.0-x64-setup.exe -Algorithm SHA256</code></pre><button type="button" class="copy" aria-label="Copy the x64 command" hidden>Copy</button></div>
+            <p>Or this for the ARM64 installer:</p>
+            <div class="code"><pre><code>Get-FileHash .\NetworkSpeedMonitor-0.1.0-arm64-setup.exe -Algorithm SHA256</code></pre><button type="button" class="copy" aria-label="Copy the ARM64 command" hidden>Copy</button></div>
+          </li>
+          <li>Open <code>SHA256SUMS.txt</code> in Notepad. Find the line that ends with the installer’s name, and compare the long string at its start with the Hash that PowerShell printed. PowerShell prints capital letters and the file uses lower case; that isn’t a difference.</li>
+        </ol>
+        <p id="copy-status" class="vh" role="status"></p>
+        <p>If every character matches, the file you have is byte for byte the one the release published: it wasn’t damaged or swapped on the way to you. If it doesn’t match, don’t run it. Download it again, and if it still doesn’t match, <a href="https://github.com/ravi-bhu/network-speed-monitor/issues">open an issue</a>.</p>
+        <p>A match doesn’t prove the code is safe. It tells you the file is the one built and published by the <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/.github/workflows/release.yml">release workflow</a>, from source you can read. And since the installer and the hash list come from the same release page, it can’t catch someone who could change that page. A signature, once signing is on, doesn’t depend on the release page.</p>
+      </section>
+
+      <section id="smartscreen">
+        <h2>The SmartScreen warning</h2>
+        <p>When you run an installer that isn’t signed and hasn’t been downloaded by many people yet, Windows may show a blue window titled “Windows protected your PC”. It means Microsoft Defender SmartScreen doesn’t recognise the app. It doesn’t mean it found anything harmful. Your browser may warn you when you download the file, for the same reason.</p>
+        <p>At first the window offers only Don’t run. To go ahead:</p>
+        <ol>
+          <li>Check the hash first, as above. That’s the point: the warning is about a file Windows doesn’t know, and the hash tells you it’s the file the release published.</li>
+          <li>Select More info. The window then shows the file name and “Unknown publisher”.</li>
+          <li>Select Run anyway.</li>
+        </ol>
+        <p>If you’d rather not run an unsigned installer, wait for a signed release.</p>
+      </section>
+
+      <section id="policy">
+        <h2>Code signing policy</h2>
+        <p>Free code signing provided by <a href="https://about.signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>. Applied for; until it’s approved, releases are unsigned.</p>
+        <p>Only the installers and the app built by this repository’s <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/.github/workflows/release.yml">release workflow</a>, from the tagged source, are signed. Every signing request is approved by hand.</p>
+        <dl class="facts">
+          <dt>Committers and reviewers</dt>
+          <dd><a href="https://github.com/ravi-bhu">Ravi Bhushan</a></dd>
+          <dt>Approvers</dt>
+          <dd><a href="https://github.com/ravi-bhu">Ravi Bhushan</a></dd>
+        </dl>
+        <p>Privacy: this program will not transfer any information to other networked systems unless specifically requested by the user or the person installing or operating it. It makes no network connections at all; see <a href="privacy.html">Privacy</a>.</p>
+      </section>
+    </div>
+  </div>
+</main>
+
+<div class="wrap">
+  <footer class="site-foot">
+    <nav aria-label="Footer">
+      <a href="guide.html">Guide</a>
+      <a href="privacy.html">Privacy</a>
+      <a href="changelog.html">Changelog</a>
+      <a href="verify.html" aria-current="page">Verify a download</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor">Source on GitHub</a>
+      <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/LICENSE">MIT licence</a>
+    </nav>
+    <p>This site sets no cookies and makes no third-party requests.</p>
+  </footer>
+</div>
+
+<script src="assets/copy.js"></script>
+</body>
+</html>
