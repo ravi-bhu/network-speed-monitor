@@ -3,6 +3,35 @@
 Checks that need a human eye, a system setting change, or a machine we don't have.
 Tick an item and note the date, Windows build and result when you've done it.
 
+## Session 2026-10-19: installed build on the developer's PC
+
+Windows 10 Pro 22H2 (19045), 1920×1080 at 125%, dark mode with an accent-coloured (tan) taskbar, Wi-Fi, IST (UTC+5:30). The build is installed with the x64 setup from `dist\`. The app was driven by mouse and keyboard; installer runs went through the shell.
+
+Passed:
+- **Install:** per-user, into `%LOCALAPPDATA%\Programs\NetworkSpeedMonitor`, with an uninstall entry, a Start menu shortcut and the Run value. VERSIONINFO shows "Network Speed Monitor 0.1.0, Copyright (c) 2026 Ravi Bhushan". The running app has 0 TCP/UDP sockets.
+- **Overlay:** sits left of the tray, readable, graph drawn.
+  - Left-click opens the report.
+  - The right-click menu has every item, and Use letters and Units › Bits apply at once and are written to `settings.ini`.
+  - Bits mode shows "23.2 Kbps" with no clipping.
+- **Report:** all four tabs work.
+  - Summary has the cards, busiest day, top adapters, top Wi-Fi network and coverage note.
+  - The Timeline is daily for This month. For Today it shows **24 hourly bars from 12 AM in IST, with no 11:30 PM bar (F4)**.
+  - Adapters and Wi-Fi tables are correct.
+  - **Ctrl+Tab** switches tabs and wraps from Wi-Fi networks back to Summary.
+- **Settings dialog:** reflects the current settings. Esc changes nothing.
+- **Fullscreen:** a borderless window covering the monitor hides the readout 50 ms after it takes the foreground, and the readout is back about 2 ms after it closes.
+- **Silent upgrade with the app running (F2):** `setup.exe /VERYSILENT /SUPPRESSMSGBOXES` logged "Network Speed Monitor was running; asked it to close." The app exited by itself, the files were replaced, and the new version started (a new process). The Run value was kept.
+- **Silent uninstall with the app running (F2):** the app closed by itself. The program folder, Start menu entry, uninstall key and Run value are gone; `usage.db` and `settings.ini` are kept. The WAL file was checkpointed, so the app flushed before it exited.
+- **Silent reinstall (F2):** the app was running about 6 s later, and the Run value and Start menu entry are back.
+
+Found (filed as issues):
+- In dark mode the report's "Show hidden adapters" checkbox draws as a solid white box. The Settings dialog custom-draws its check boxes, but the report window doesn't.
+- On an accent-coloured (light tan) taskbar the readout uses the dark-taskbar palette: white text and an orange graph with low contrast. The palette follows the light/dark *mode*, not the taskbar's actual colour.
+- When the period is This month (or Today or This week), the period card duplicates the matching fixed card.
+- The overlay tooltip didn't appear on synthetic mouse hover. Check it with a real mouse before treating it as a bug.
+
+Not testable on this setup: crowding (the taskbar combines buttons), and everything that needs a settings change, sleep, sign-out or an admin prompt (see the open items below).
+
 ## Task 4: Overlay window on the taskbar (demo data)
 
 Run `build\src\ui\Debug\NetworkSpeedMonitor.exe --demo`. Left-click the readout to toggle the graph and right-click it to toggle arrows/letters. The demo has no menu yet. Since Task 5, end it with `taskkill /im NetworkSpeedMonitor.exe` (**without** `/f`) or start it with `--demo-seconds N`. A forced kill (Task Manager's End task, `Stop-Process`, `taskkill /f`) leaves the Windows 10 task list shrunk, as described under Task 5.
@@ -154,7 +183,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Dark and High Contrast:** the dialog follows the Windows app theme. Check the check boxes and radio buttons (drawn by the app in dark mode) and the combo box on Windows 10 and Windows 11, and that High Contrast uses the system controls.
 - [ ] **Pinned adapter that is hidden or unplugged:** pin an adapter, hide it in the report, and open Settings. It is still listed and selected, and OK keeps it pinned.
 - [ ] **DPI:** open the dialog at 100%, 125% and 150% scaling; nothing clips, including long adapter names in the combo box.
-- [ ] **Properties:** right-click `NetworkSpeedMonitor.exe` > Properties > Details shows the product name, version and copyright.
+- [x] **Properties:** right-click `NetworkSpeedMonitor.exe` > Properties > Details shows the product name, version and copyright.
 
 ## Task 17: Installer, winget, release pipeline, docs
 - [x] **Compile the x64 installer:** done 2026-10-19 on Win10 with a per-user Inno Setup 6 install (`%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`). `ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=x64 /DSourceExe=<repo>\build\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss` succeeded, including the `[Code]` section, and wrote `dist\NetworkSpeedMonitor-0.1.0-x64-setup.exe` (2.8 MB).
@@ -163,7 +192,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Autostart:** after install, sign out and back in; the overlay appears. (Settings > Start with Windows is on by default.)
 - [ ] **Running app:** with the app running, run the installer again (upgrade) and the uninstaller. Each closes the app by itself, without asking and without killing it (see the F2 rows under "Final review fixes"); the upgrade starts it again.
 - [ ] **Interactive uninstall:** Settings > Apps > Uninstall asks "Also delete your usage history?" (default No). Yes removes `%LOCALAPPDATA%\NetworkSpeedMonitor`; No keeps it. In both cases the app folder, Start menu entry and `HKCU\...\Run\NetworkSpeedMonitor` are gone.
-- [ ] **Silent uninstall:** `unins000.exe /VERYSILENT` shows no prompt, removes the app and the Run value, and keeps `%LOCALAPPDATA%\NetworkSpeedMonitor`.
+- [x] **Silent uninstall:** `unins000.exe /VERYSILENT` shows no prompt, removes the app and the Run value, and keeps `%LOCALAPPDATA%\NetworkSpeedMonitor`.
 - [ ] **winget:** fill in a copy of `packaging\winget\0.1.0` with real values and run `winget validate <folder>`; then `winget install --manifest <folder>` and `winget uninstall NetworkSpeedMonitor.NetworkSpeedMonitor` on a test machine. (The templates with sample values already pass `winget validate` on winget 1.29.)
 - [ ] **Release workflow:** push a test tag such as `v0.1.0` on a fork. "Check imports" runs `tools/check_imports.ps1` on both exes and passes; the run produces both installers, `SHA256SUMS.txt` and a GitHub Release with all three files attached. The disabled SignPath steps are skipped.
 - [ ] **README:** the screenshot renders on GitHub and the docs read correctly (README, PRIVACY, CONTRIBUTING, SECURITY, THIRD_PARTY_NOTICES, docs/signing.md).
@@ -172,8 +201,8 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 ## Final review fixes
 - [ ] **Elevated first instance (F1):** start `NetworkSpeedMonitor.exe` with "Run as administrator", then start it again normally. The second copy exits at once: one overlay, and usage is not double counted. (The report does not open, because Windows blocks the message to the elevated copy.) Exit the elevated copy afterwards.
 - [ ] **Half-hour time zone (F4):** set Windows to (UTC+05:30) Chennai, Kolkata, Mumbai, New Delhi and run the app across local midnight. After 00:00, the report's Today shows the new traffic, and its Timeline has 24 bars from 12 AM with no 11:30 PM bar. Repeat with (UTC+05:45) Kathmandu if you can.
-- [ ] **winget upgrade with the app running (F2, Inno Setup was not available to compile this):** with the app running and some traffic since the last flush, run `winget upgrade` (or the new installer with `/VERYSILENT`). No message box appears; the overlay disappears within a few seconds (the app exits through WM_CLOSE, so it saves the usage it held and, on Windows 10, gives the task list its space back), the files are replaced, and the new version starts by itself. Nothing is killed, and the report still has the traffic from just before the upgrade.
-- [ ] **winget uninstall with the app running (F2):** with the app running, run `winget uninstall NetworkSpeedMonitor.NetworkSpeedMonitor` (or `unins000.exe /VERYSILENT`). No prompt; the app exits, the app folder and `HKCU\...\Run\NetworkSpeedMonitor` are gone, and `%LOCALAPPDATA%\NetworkSpeedMonitor` is kept.
-- [ ] **Silent fresh install starts the app (F2):** on a machine without the app, run the installer with `/VERYSILENT` (or `winget install`). The overlay appears without a sign-out, and `HKCU\...\Run\NetworkSpeedMonitor` exists afterwards (the app writes it on its first run).
+- [x] **winget upgrade with the app running (F2, Inno Setup was not available to compile this):** with the app running and some traffic since the last flush, run `winget upgrade` (or the new installer with `/VERYSILENT`). No message box appears; the overlay disappears within a few seconds (the app exits through WM_CLOSE, so it saves the usage it held and, on Windows 10, gives the task list its space back), the files are replaced, and the new version starts by itself. Nothing is killed, and the report still has the traffic from just before the upgrade.
+- [x] **winget uninstall with the app running (F2):** with the app running, run `winget uninstall NetworkSpeedMonitor.NetworkSpeedMonitor` (or `unins000.exe /VERYSILENT`). No prompt; the app exits, the app folder and `HKCU\...\Run\NetworkSpeedMonitor` are gone, and `%LOCALAPPDATA%\NetworkSpeedMonitor` is kept.
+- [x] **Silent fresh install starts the app (F2):** on a machine without the app, run the installer with `/VERYSILENT` (or `winget install`). The overlay appears without a sign-out, and `HKCU\...\Run\NetworkSpeedMonitor` exists afterwards (the app writes it on its first run).
 - [ ] **Interactive uninstall still asks about history (F2):** with the app running, uninstall from Settings > Apps. The app closes by itself, and the uninstaller still asks "Also delete your usage history?" (default No). The app is closed as the uninstaller starts, so cancelling at its "Are you sure" prompt leaves the app closed; start it again from the Start menu.
-- [ ] **Setup log (F2):** run the installer with `/LOG=setup.log` while the app runs; the log has "Network Speed Monitor was running; asked it to close."
+- [x] **Setup log (F2):** run the installer with `/LOG=setup.log` while the app runs; the log has "Network Speed Monitor was running; asked it to close."
