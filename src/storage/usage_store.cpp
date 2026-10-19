@@ -144,6 +144,11 @@ void Rename(const std::filesystem::path& from, const std::filesystem::path& to) 
 
 }  // namespace
 
+QuickCheckVerdict ClassifyQuickCheck(const std::optional<std::string>& firstRow, int errcode) {
+    if (firstRow) return *firstRow == "ok" ? QuickCheckVerdict::Ok : QuickCheckVerdict::Corrupt;
+    return IsCorruptionCode(errcode) ? QuickCheckVerdict::Corrupt : QuickCheckVerdict::Error;
+}
+
 UsageStore::~UsageStore() { Close(); }
 
 void UsageStore::SetBusyTimeoutMs(int ms) {
@@ -182,9 +187,15 @@ UsageStore::Attempt UsageStore::TryOpen(const std::filesystem::path& file) {
     if (!Exec(db_, "PRAGMA synchronous=NORMAL;")) return Attempt::Error;
 
     {
+        // A busy, locked or out-of-memory check says nothing about the file: only corruption moves it aside.
         Stmt check(db_, "PRAGMA quick_check;");
-        if (!check.ok()) return Attempt::Corrupt;
-        if (!check.Step() || check.ColUtf8(0) != "ok") return Attempt::Corrupt;
+        std::optional<std::string> firstRow;
+        if (check.ok() && check.Step()) firstRow = check.ColUtf8(0);
+        switch (ClassifyQuickCheck(firstRow, sqlite3_errcode(db_))) {
+            case QuickCheckVerdict::Ok: break;
+            case QuickCheckVerdict::Corrupt: return Attempt::Corrupt;
+            case QuickCheckVerdict::Error: return Attempt::Error;
+        }
     }
 
     rc = sqlite3_exec(db_, kSchema, nullptr, nullptr, nullptr);

@@ -231,6 +231,50 @@ TEST_CASE("Open reports Failed when the path cannot be used") {
     CHECK(st.QueryHourly({0, kFarFuture}).empty());
 }
 
+TEST_CASE("ClassifyQuickCheck: only corruption moves the database aside") {
+    CHECK(ClassifyQuickCheck(std::string("ok"), SQLITE_ROW) == QuickCheckVerdict::Ok);
+    CHECK(ClassifyQuickCheck(std::string("*** in database main ***\nPage 5: btreeInitPage() returns error code 11"),
+                             SQLITE_ROW) == QuickCheckVerdict::Corrupt);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_CORRUPT) == QuickCheckVerdict::Corrupt);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_NOTADB) == QuickCheckVerdict::Corrupt);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_CORRUPT_INDEX) == QuickCheckVerdict::Corrupt);  // extended code
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_BUSY) == QuickCheckVerdict::Error);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_LOCKED) == QuickCheckVerdict::Error);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_NOMEM) == QuickCheckVerdict::Error);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_IOERR_READ) == QuickCheckVerdict::Error);
+    CHECK(ClassifyQuickCheck(std::nullopt, SQLITE_DONE) == QuickCheckVerdict::Error);  // no row at all
+}
+
+TEST_CASE("Open on a database another connection has locked fails and leaves the file in place") {
+    TempDb t;
+    const auto h = UtcOf(2026, 10, 18, 10);
+    {
+        UsageStore st;
+        REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);
+        UsageRow r = Row(h, Series::Adapter, L"A", L"", 5, 6);
+        REQUIRE(st.AddUsage(std::span<const UsageRow>(&r, 1)));
+    }
+    // Exclusive locking mode keeps every other connection out, readers included, until it ends.
+    sqlite3* other = nullptr;
+    REQUIRE(sqlite3_open(t.file.string().c_str(), &other) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(other, "PRAGMA locking_mode=EXCLUSIVE; BEGIN EXCLUSIVE;", nullptr, nullptr, nullptr) ==
+            SQLITE_OK);
+
+    UsageStore st;
+    CHECK(st.Open(t.file) == UsageStore::OpenResult::Failed);
+    CHECK(st.RecoveredFile().empty());
+    for (const auto& e : fs::directory_iterator(t.dir))
+        CHECK(e.path().filename().wstring().rfind(L"usage.corrupt-", 0) == std::wstring::npos);
+
+    REQUIRE(sqlite3_exec(other, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(other);
+
+    CHECK(st.Open(t.file) == UsageStore::OpenResult::Ok);      // the retry finds the history intact
+    auto rows = st.QueryHourly({h, h + 1});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].rx == 5);
+}
+
 TEST_CASE("AddUsage returns true and the store stays healthy") {
     TempDb t; UsageStore st; REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);
     UsageRow r = Row(UtcOf(2026, 10, 18, 10), Series::Adapter, L"A", L"", 1, 1);

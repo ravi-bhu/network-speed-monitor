@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <vector>
@@ -11,6 +12,13 @@
 struct sqlite3;
 
 namespace nsm {
+
+// How Open reads the result of PRAGMA quick_check (exposed for tests). firstRow is the check's first row, or
+// nullopt when preparing or stepping it failed, with errcode = sqlite3_errcode() at that point. Only corruption
+// (SQLITE_CORRUPT/NOTADB, or a first row other than "ok") moves the file aside; any other failure (busy,
+// locked, out of memory, I/O) is an Error that leaves it alone.
+enum class QuickCheckVerdict { Ok, Corrupt, Error };
+QuickCheckVerdict ClassifyQuickCheck(const std::optional<std::string>& firstRow, int errcode);
 
 struct AdapterMeta { std::wstring id, name, friendlyName; AdapterKind kind = AdapterKind::Other; bool hidden = false; };
 struct NetworkMeta { std::wstring key, name; };

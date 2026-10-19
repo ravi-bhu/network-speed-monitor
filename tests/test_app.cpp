@@ -140,6 +140,12 @@ TEST_CASE("OtherInstanceRunning: an existing mutex, or one we may not open, mean
     CHECK_FALSE(OtherInstanceRunning(false, ERROR_INVALID_HANDLE)); // any other failure: run without the guard
 }
 
+TEST_CASE("ShouldRetryOpen: only while nothing is recorded and there is a data folder") {
+    CHECK(ShouldRetryOpen(false, true));
+    CHECK_FALSE(ShouldRetryOpen(true, true));
+    CHECK_FALSE(ShouldRetryOpen(false, false));
+}
+
 TEST_CASE("RollUpDue once every 24 h of uptime") {
     const uint64_t day = 24ull * 3600 * 1000;
     CHECK_FALSE(RollUpDue(1000, 1000));

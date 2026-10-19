@@ -52,8 +52,11 @@ private:
     LRESULT HandleMessage(UINT msg, WPARAM wp, LPARAM lp);
 
     bool Start(HINSTANCE inst, const std::wstring& cmdLine);
+    void OpenStore();        // sets recording_; on recovery, the report's corruption notice
+    void RetryOpenStore();   // a later OpenStore after a failed one (e.g. the disk was busy at login)
     void RefreshNetwork();
     void RefreshNetworkOnce();
+    void SaveNetworkMeta();  // upserts adapter and network names that changed since the last save
     void Tick();
     void RollUpNow();
     void ShowMenu(POINT pt);
@@ -135,6 +138,10 @@ std::wstring TooltipText(const std::wstring& pinnedId, const std::wstring& inter
 bool OtherInstanceRunning(bool handleValid, DWORD lastError);
 
 bool RollUpDue(uint64_t lastMs, uint64_t nowMs);  // once every 24 h of uptime
+
+// At a flush: try opening the database again when the last Open failed (nothing is being recorded),
+// so a transient failure at login does not lose the whole session. Never without a data folder.
+bool ShouldRetryOpen(bool recording, bool haveDataDir);
 
 // Hands every accumulated row to `write`. If it fails, the rows go back into the accumulator, so
 // the next flush retries them with no loss and no double count. True if nothing is left unwritten.

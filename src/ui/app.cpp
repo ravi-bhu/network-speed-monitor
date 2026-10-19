@@ -144,6 +144,8 @@ bool OtherInstanceRunning(bool handleValid, DWORD lastError) {
 
 bool RollUpDue(uint64_t lastMs, uint64_t nowMs) { return nowMs - lastMs >= kRollUpIntervalMs; }
 
+bool ShouldRetryOpen(bool recording, bool haveDataDir) { return !recording && haveDataDir; }
+
 bool FlushAccumulator(UsageAccumulator& acc, const std::function<bool(std::span<const UsageRow>)>& write) {
     if (acc.Empty()) return true;
     const std::vector<UsageRow> rows = acc.Take();
@@ -265,11 +267,7 @@ bool App::Start(HINSTANCE inst, const std::wstring& cmdLine) {
     if (!dataDir_.empty()) settings_ = LoadSettings(dataDir_ / L"settings.ini");
     SetAutostart(settings_.startWithWindows);
 
-    if (!dataDir_.empty()) {
-        const UsageStore::OpenResult opened = store_.Open(dataDir_ / L"usage.db");
-        recording_ = opened != UsageStore::OpenResult::Failed;  // Failed: the overlay still works, nothing is recorded
-        if (opened == UsageStore::OpenResult::RecoveredFromCorruption) recoveredFile_ = store_.RecoveredFile();
-    }
+    if (!dataDir_.empty()) OpenStore();
     RollUpNow();
 
     // Clicks can arrive inside a COM/UIA modal pump, so the report is opened from the message loop.
@@ -348,6 +346,22 @@ LRESULT App::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
     }
 }
 
+void App::OpenStore() {
+    const UsageStore::OpenResult opened = store_.Open(dataDir_ / L"usage.db");
+    recording_ = opened != UsageStore::OpenResult::Failed;  // Failed: the overlay still works, nothing is recorded
+    if (opened == UsageStore::OpenResult::RecoveredFromCorruption) {
+        recoveredFile_ = store_.RecoveredFile();
+        if (report_) report_->SetCorruptionNotice(recoveredFile_);
+    }
+}
+
+void App::RetryOpenStore() {
+    OpenStore();
+    if (!recording_) return;  // still failing: try again at the next flush
+    SaveNetworkMeta();        // nothing was saved while the database was closed
+    RollUpNow();              // the startup rollup was skipped
+}
+
 void App::RefreshNetwork() {
     // The Network List Manager query is a COM call that can pump messages, so another change
     // notification may arrive in the middle; run again afterwards instead of nesting.
@@ -367,25 +381,27 @@ void App::RefreshNetworkOnce() {
     adapters_ = EnumerateAdapters();
     internetId_ = AdapterIdForLuid(adapters_, FindInternetInterface());
     networks_ = QueryAdapterNetworks();
-
-    if (recording_) {
-        // Upsert only what changed: network notifications can be frequent, and the disk is touched sparingly.
-        for (const auto& a : adapters_) {
-            const auto it = savedAdapters_.find(a.id);
-            if (it != savedAdapters_.end() && it->second == std::make_pair(a.name, a.kind)) continue;
-            store_.UpsertAdapter(a.id, a.name, a.kind);
-            savedAdapters_[a.id] = {a.name, a.kind};
-        }
-        for (const auto& [adapterId, net] : networks_) {
-            if (net.key.empty()) continue;
-            const auto it = savedNetworks_.find(net.key);
-            if (it != savedNetworks_.end() && it->second == net.name) continue;
-            store_.UpsertNetwork(NetworkMeta{net.key, net.name});
-            savedNetworks_[net.key] = net.name;
-        }
-        metas_ = store_.Adapters();
-    }
+    SaveNetworkMeta();
     UpdateTooltip();
+}
+
+void App::SaveNetworkMeta() {
+    if (!recording_) return;
+    // Upsert only what changed: network notifications can be frequent, and the disk is touched sparingly.
+    for (const auto& a : adapters_) {
+        const auto it = savedAdapters_.find(a.id);
+        if (it != savedAdapters_.end() && it->second == std::make_pair(a.name, a.kind)) continue;
+        store_.UpsertAdapter(a.id, a.name, a.kind);
+        savedAdapters_[a.id] = {a.name, a.kind};
+    }
+    for (const auto& [adapterId, net] : networks_) {
+        if (net.key.empty()) continue;
+        const auto it = savedNetworks_.find(net.key);
+        if (it != savedNetworks_.end() && it->second == net.name) continue;
+        store_.UpsertNetwork(NetworkMeta{net.key, net.name});
+        savedNetworks_[net.key] = net.name;
+    }
+    metas_ = store_.Adapters();
 }
 
 void App::Tick() {
@@ -420,7 +436,10 @@ void App::Tick() {
     }
     overlay_.Update(t.display, history_);
 
-    if (ShouldFlush(lastFlushUtc_, now)) FlushNow();
+    if (ShouldFlush(lastFlushUtc_, now)) {
+        if (ShouldRetryOpen(recording_, !dataDir_.empty())) RetryOpenStore();
+        FlushNow();
+    }
     if (RollUpDue(lastRollUpMs_, GetTickCount64())) RollUpNow();
     ticking_ = false;
 }
