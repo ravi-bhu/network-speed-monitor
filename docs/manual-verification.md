@@ -196,14 +196,14 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 
 ## Task 17: Installer, winget, release pipeline, docs
 - [x] **Compile the x64 installer:** done 2026-10-19 on Win10 with a per-user Inno Setup 6 install (`%LOCALAPPDATA%\Programs\Inno Setup 6\ISCC.exe`). `ISCC.exe /DMyAppVersion=0.1.0 /DMyArch=x64 /DSourceExe=<repo>\build\src\ui\Release\NetworkSpeedMonitor.exe installer\NetworkSpeedMonitor.iss` succeeded, including the `[Code]` section, and wrote `dist\NetworkSpeedMonitor-0.1.0-x64-setup.exe` (2.8 MB).
-- [ ] **Compile the arm64 installer** against an ARM64 build. The release workflow does this in CI.
+- [x] **Compile the arm64 installer** against an ARM64 build. The release workflow does this in CI. _Done 2026-10-19 by the v0.1.0 release run (39276217890)._
 - [ ] **Install as a standard user:** run the installer from a non-admin account. There is no UAC prompt, it installs to `%LOCALAPPDATA%\Programs\NetworkSpeedMonitor`, adds a Start menu entry, and "Launch Network Speed Monitor" on the last page starts the app.
 - [ ] **Autostart:** after install, sign out and back in; the overlay appears. (Settings > Start with Windows is on by default.)
 - [ ] **Running app:** with the app running, run the installer again (upgrade) and the uninstaller. Each closes the app by itself, without asking and without killing it (see the F2 rows under "Final review fixes"); the upgrade starts it again.
 - [ ] **Interactive uninstall:** Settings > Apps > Uninstall asks "Also delete your usage history?" (default No). Yes removes `%LOCALAPPDATA%\NetworkSpeedMonitor`; No keeps it. In both cases the app folder, Start menu entry and `HKCU\...\Run\NetworkSpeedMonitor` are gone.
 - [x] **Silent uninstall:** `unins000.exe /VERYSILENT` shows no prompt, removes the app and the Run value, and keeps `%LOCALAPPDATA%\NetworkSpeedMonitor`.
 - [ ] **winget:** fill in a copy of `packaging\winget\0.1.0` with real values and run `winget validate <folder>`; then `winget install --manifest <folder>` and `winget uninstall NetworkSpeedMonitor.NetworkSpeedMonitor` on a test machine. (The templates with sample values already pass `winget validate` on winget 1.29.)
-- [ ] **Release workflow:** push a test tag such as `v0.1.0` on a fork. "Check imports" runs `tools/check_imports.ps1` on both exes and passes; the run produces both installers, `SHA256SUMS.txt` and a GitHub Release with all three files attached. The disabled SignPath steps are skipped.
+- [x] **Release workflow:** push a test tag such as `v0.1.0` on a fork. "Check imports" runs `tools/check_imports.ps1` on both exes and passes; the run produces both installers, `SHA256SUMS.txt` and a GitHub Release with all three files attached. The disabled SignPath steps are skipped. _Done 2026-10-19 on the real repository: the v0.1.0 run passed every step, skipped the four SignPath steps, and the downloaded installers match `SHA256SUMS.txt`._
 - [ ] **README:** the screenshot renders on GitHub and the docs read correctly (README, PRIVACY, CONTRIBUTING, SECURITY, THIRD_PARTY_NOTICES, docs/signing.md).
 - [ ] **Windows 11 VM:** repeat the install, autostart and both uninstall checks.
 
