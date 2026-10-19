@@ -36,8 +36,8 @@ Guided checks (the user changed the setting, then the app was checked by screens
 - **Light mode:** pass. Switched live, with no restart, to dark text, ↑ `#B35C00` and ↓ `#0067C0`, readable. The dark-mode "tan" taskbar was wallpaper transparency, not an accent colour, and white text there matches the system clock (#27, closed).
 - **Crowding, Combine: Never:** pass. With 10 and then 25 Notepad windows, the task list stopped at 180..1480 with paging arrows. The readout stayed at 1485..1644 with its graph, with no overlap.
 - **Taskbar at the top:** pass (task list 180..1480, readout 1485..1644, vertically centred).
-- **Left or right at the default width (87 px at 125%): FAIL.** The readout is hidden because the narrowest layout doesn't fit (#30). Widened to 300 px, it works on both sides: the readout sits above the tray with the graph, and the task list reserves room.
-- **Auto-hide: FAIL.** The readout hides with the taskbar but never comes back when the taskbar slides in (8 s observed; #31, release-blocker). It came back when auto-hide was switched off.
+- **Left or right at the default width (87 px at 125%):** failed at first; the readout was hidden because the narrowest layout didn't fit (#30). **Fixed and re-verified the same day:** a compact readout (`↑ 1.2KB`) now shows above the tray. Widened to 300 px, both sides work with the full layout and graph, and the task list reserves room.
+- **Auto-hide:** failed at first; the readout never came back when the taskbar slid in (#31). There were two causes: the slide raises no location event, and with auto-hide a focused maximized app covers the monitor and was taken for a fullscreen app. **Fixed and re-verified the same day** on the left taskbar with auto-hide. Note: while Claude drives the screen, its own full-screen overlay is the foreground window and correctly hides the readout, so check auto-hide by hand.
 
 Still open on Windows 10: scaling 100/150/175/200%, High Contrast, two monitors, F11/game fullscreen, shell flyouts by hand, sleep/resume, sign-out, the elevated-instance check (F1), the interactive uninstall prompt, Wi-Fi/Ethernet/VPN switching, and Narrator.
 
