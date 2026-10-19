@@ -19,9 +19,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The tag name reaches scripts only through env (REF_NAME), never as an expression pasted into a script, so
+      # a crafted tag cannot inject PowerShell.
       - name: Work out the version and check it matches the tag
+        env:
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $version = $env:REF_NAME.TrimStart('v')
           $cmake = Select-String -Path CMakeLists.txt -Pattern 'project\(NetworkSpeedMonitor VERSION (\d+\.\d+\.\d+)'
           $cmakeVersion = $cmake.Matches[0].Groups[1].Value
           if ($cmakeVersion -ne $version) { throw "Tag $version does not match CMakeLists.txt version $cmakeVersion" }
@@ -98,5 +102,9 @@ jobs:
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
-          gh release create '${{ github.ref_name }}' dist\*.exe dist\SHA256SUMS.txt --title "Network Speed Monitor $env:VERSION" --generate-notes --verify-tag
+          # gh does not expand wildcards on Windows: pass every file by its full path.
+          $files = @((Get-ChildItem dist\*.exe).FullName) + (Resolve-Path dist\SHA256SUMS.txt).Path
+          gh release create $env:REF_NAME @files --title "Network Speed Monitor $env:VERSION" --generate-notes --verify-tag
+          if ($LASTEXITCODE -ne 0) { throw 'gh release create failed' }
