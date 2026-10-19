@@ -46,3 +46,10 @@ TEST_CASE("Sampler: adapter that disappears and returns starts fresh") {
     CHECK(back.perAdapter.empty()); CHECK(!back.internet);
     auto next = s.Tick({S(L"A",1100,0,4)}, L"A", L"A"); REQUIRE(next.internet); CHECK(next.internet->rx == 1000);
 }
+TEST_CASE("Sampler: adapter that disappears and returns does not reuse its old baseline") {
+    Sampler s; s.Tick({S(L"A",0,0,0)}, L"A", L"A"); s.Tick({S(L"A",5000,0,1)}, L"A", L"A");
+    s.Tick({}, L"", L"A");
+    auto back = s.Tick({S(L"A",6000,0,3)}, L"A", L"A");   // counters >= old: a retained tracker would report 1000
+    CHECK(back.perAdapter.empty()); CHECK(!back.internet);
+    REQUIRE(back.display); CHECK(back.display->rx == 0);  // stale lastSpeed would be 5000
+}
