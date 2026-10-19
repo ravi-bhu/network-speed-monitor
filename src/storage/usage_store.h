@@ -29,7 +29,17 @@ public:
     OpenResult Open(const std::filesystem::path& file);
     std::filesystem::path RecoveredFile() const { return recovered_; }   // where the corrupt db was moved
 
-    void AddUsage(std::span<const UsageRow> rows);                       // adds to existing rows, one transaction
+    // Adds to existing rows in one transaction. Returns true only if the whole batch committed; on false
+    // nothing was written, so the caller may safely re-add the same rows later.
+    bool AddUsage(std::span<const UsageRow> rows);
+
+    // False after any runtime write/IO failure or SQLITE_CORRUPT/NOTADB/IOERR from any call (sticky);
+    // reset to true by a successful Open. Lets the app tell the user the history is not being saved.
+    bool Healthy() const { return healthy_; }
+
+    // Busy timeout applied to the connection (default 2000 ms, set by Open). Exposed for tests.
+    void SetBusyTimeoutMs(int ms);
+
     void UpsertAdapter(const std::wstring& id, const std::wstring& name, AdapterKind kind);  // keeps friendlyName/hidden
     void UpsertNetwork(const NetworkMeta& n);
     void SetFriendlyName(const std::wstring& adapterId, const std::wstring& name);          // empty clears
@@ -47,8 +57,11 @@ private:
     enum class Attempt { Ok, Corrupt, Error };
     Attempt TryOpen(const std::filesystem::path& file);
     void Close();
+    void CheckError();
+    template <class F> bool Write(F&& f) noexcept;
 
     sqlite3* db_ = nullptr;
+    bool healthy_ = true;
     std::filesystem::path recovered_;
 };
 

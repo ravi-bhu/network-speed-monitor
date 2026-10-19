@@ -7,6 +7,7 @@
 #include <fstream>
 #include <random>
 
+#include "sqlite3.h"
 #include "storage/usage_store.h"
 
 using namespace nsm;
@@ -228,4 +229,38 @@ TEST_CASE("Open reports Failed when the path cannot be used") {
     UsageRow r = Row(UtcOf(2026, 10, 18, 10), Series::Adapter, L"A", L"", 1, 1);
     st.AddUsage(std::span<const UsageRow>(&r, 1));   // must not throw
     CHECK(st.QueryHourly({0, kFarFuture}).empty());
+}
+
+TEST_CASE("AddUsage returns true and the store stays healthy") {
+    TempDb t; UsageStore st; REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);
+    UsageRow r = Row(UtcOf(2026, 10, 18, 10), Series::Adapter, L"A", L"", 1, 1);
+    CHECK(st.AddUsage(std::span<const UsageRow>(&r, 1)));
+    CHECK(st.Healthy());
+}
+
+TEST_CASE("AddUsage reports failure, writes nothing and a retry does not double count") {
+    TempDb t; UsageStore st; REQUIRE(st.Open(t.file) == UsageStore::OpenResult::Ok);
+    st.SetBusyTimeoutMs(0);
+    const auto h = UtcOf(2026, 10, 18, 10);
+    UsageRow r = Row(h, Series::Adapter, L"A", L"", 100, 10);
+
+    // A second connection holds the write lock, so BEGIN IMMEDIATE in the store fails with SQLITE_BUSY.
+    sqlite3* other = nullptr;
+    REQUIRE(sqlite3_open(t.file.string().c_str(), &other) == SQLITE_OK);
+    REQUIRE(sqlite3_exec(other, "BEGIN EXCLUSIVE", nullptr, nullptr, nullptr) == SQLITE_OK);
+
+    CHECK_FALSE(st.AddUsage(std::span<const UsageRow>(&r, 1)));
+    CHECK_FALSE(st.Healthy());
+
+    REQUIRE(sqlite3_exec(other, "ROLLBACK", nullptr, nullptr, nullptr) == SQLITE_OK);
+    sqlite3_close(other);
+
+    CHECK(HourlyCount(st) == 0);                                // nothing was written
+    CHECK(st.AddUsage(std::span<const UsageRow>(&r, 1)));       // retry of the same rows
+    auto rows = st.QueryHourly({h, h + 1});
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].rx == 100); CHECK(rows[0].tx == 10);          // exactly one copy
+    CHECK_FALSE(st.Healthy());                                  // sticky until the next Open
+    CHECK(st.Open(t.file) == UsageStore::OpenResult::Ok);
+    CHECK(st.Healthy());
 }

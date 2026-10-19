@@ -146,6 +146,26 @@ void Rename(const std::filesystem::path& from, const std::filesystem::path& to) 
 
 UsageStore::~UsageStore() { Close(); }
 
+void UsageStore::SetBusyTimeoutMs(int ms) {
+    if (db_) sqlite3_busy_timeout(db_, ms);
+}
+
+// Marks the store unhealthy if the last call on the connection reported corruption or an I/O error.
+void UsageStore::CheckError() {
+    if (!db_) return;
+    if (IsCorruptionCode(sqlite3_errcode(db_)) || (sqlite3_errcode(db_) & 0xff) == SQLITE_IOERR) healthy_ = false;
+}
+
+// Runs a write operation; a false result or an exception makes the store unhealthy. Returns success.
+template <class F>
+bool UsageStore::Write(F&& f) noexcept {
+    bool ok = false;
+    try { ok = db_ && f(); } catch (...) { ok = false; }
+    if (!ok) healthy_ = false;
+    CheckError();
+    return ok;
+}
+
 void UsageStore::Close() {
     if (db_) { sqlite3_close(db_); db_ = nullptr; }
 }
@@ -154,6 +174,7 @@ UsageStore::Attempt UsageStore::TryOpen(const std::filesystem::path& file) {
     const std::string path = ToUtf8(file.wstring());
     int rc = sqlite3_open_v2(path.c_str(), &db_, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
     if (rc != SQLITE_OK) return IsCorruptionCode(rc) ? Attempt::Corrupt : Attempt::Error;
+    sqlite3_busy_timeout(db_, 2000);
 
     // A garbage file is first detected by the first statement that reads the header.
     rc = sqlite3_exec(db_, "PRAGMA journal_mode=WAL;", nullptr, nullptr, nullptr);
@@ -175,6 +196,7 @@ UsageStore::OpenResult UsageStore::Open(const std::filesystem::path& file) {
     try {
         Close();
         recovered_.clear();
+        healthy_ = true;
 
         std::error_code ec;
         if (file.has_parent_path()) std::filesystem::create_directories(file.parent_path(), ec);
@@ -182,6 +204,7 @@ UsageStore::OpenResult UsageStore::Open(const std::filesystem::path& file) {
         Attempt a = TryOpen(file);
         if (a == Attempt::Ok) return OpenResult::Ok;
         Close();
+        healthy_ = false;
         if (a == Attempt::Error) return OpenResult::Failed;
 
         // Corrupt: move the database (and its WAL files) aside and start fresh.
@@ -205,70 +228,68 @@ UsageStore::OpenResult UsageStore::Open(const std::filesystem::path& file) {
         a = TryOpen(file);
         if (a != Attempt::Ok) { Close(); return OpenResult::Failed; }
         recovered_ = target;
+        healthy_ = true;
         return OpenResult::RecoveredFromCorruption;
     } catch (...) {
         Close();
+        healthy_ = false;
         return OpenResult::Failed;
     }
 }
 
-void UsageStore::AddUsage(std::span<const UsageRow> rows) {
-    Guard([&] {
-        if (!db_ || rows.empty()) return;
+bool UsageStore::AddUsage(std::span<const UsageRow> rows) {
+    if (rows.empty()) return db_ != nullptr;
+    return Write([&] {
         Transaction tx(db_);
-        if (!tx.started()) return;
+        if (!tx.started()) return false;
         Stmt ins(db_,
             "INSERT INTO usage_hourly(hour_utc, series, adapter_id, network_key, rx, tx) VALUES(?1,?2,?3,?4,?5,?6)"
             " ON CONFLICT(hour_utc, series, adapter_id, network_key)"
             " DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx");
-        if (!ins.ok()) return;
+        if (!ins.ok()) return false;
         for (const UsageRow& r : rows) {
             ins.Int(1, r.hourUtc).Int(2, static_cast<int>(r.series)).Text(3, r.adapterId).Text(4, r.networkKey)
                .Int(5, static_cast<int64_t>(r.rx)).Int(6, static_cast<int64_t>(r.tx));
-            if (!ins.Run()) return;
+            if (!ins.Run()) return false;
         }
-        tx.Commit();
+        return tx.Commit();
     });
 }
 
 void UsageStore::UpsertAdapter(const std::wstring& id, const std::wstring& name, AdapterKind kind) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Stmt s(db_,
             "INSERT INTO adapters(id, name, kind) VALUES(?1,?2,?3)"
             " ON CONFLICT(id) DO UPDATE SET name = excluded.name, kind = excluded.kind");
         s.Text(1, id).Text(2, name).Int(3, static_cast<int>(kind));
-        s.Run();
+        return s.Run();
     });
 }
 
 void UsageStore::UpsertNetwork(const NetworkMeta& n) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Stmt s(db_,
             "INSERT INTO networks(key, name) VALUES(?1,?2)"
             " ON CONFLICT(key) DO UPDATE SET name = excluded.name");
         s.Text(1, n.key).Text(2, n.name);
-        s.Run();
+        return s.Run();
     });
 }
 
 void UsageStore::SetFriendlyName(const std::wstring& adapterId, const std::wstring& name) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Stmt s(db_, "UPDATE adapters SET friendly_name = ?2 WHERE id = ?1");
         s.Text(1, adapterId);
         if (name.empty()) s.Null(2); else s.Text(2, name);
-        s.Run();
+        return s.Run();
     });
 }
 
 void UsageStore::SetHidden(const std::wstring& adapterId, bool hidden) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Stmt s(db_, "UPDATE adapters SET hidden = ?2 WHERE id = ?1");
         s.Text(1, adapterId).Int(2, hidden ? 1 : 0);
-        s.Run();
+        return s.Run();
     });
 }
 
@@ -286,6 +307,7 @@ std::vector<AdapterMeta> UsageStore::Adapters() {
             out.push_back(std::move(a));
         }
     });
+    CheckError();
     return out;
 }
 
@@ -296,6 +318,7 @@ std::vector<NetworkMeta> UsageStore::Networks() {
         Stmt s(db_, "SELECT key, name FROM networks ORDER BY key");
         while (s.Step()) out.push_back(NetworkMeta{s.ColText(0), s.ColText(1)});
     });
+    CheckError();
     return out;
 }
 
@@ -312,6 +335,7 @@ std::vector<UsageRow> UsageStore::QueryHourly(UtcRange r) {
                                    static_cast<uint64_t>(s.ColInt(4)), static_cast<uint64_t>(s.ColInt(5))});
         }
     });
+    CheckError();
     return out;
 }
 
@@ -329,12 +353,12 @@ std::vector<DailyRow> UsageStore::QueryDaily(LocalDate from, LocalDate to) {
                                    static_cast<uint64_t>(s.ColInt(5))});
         }
     });
+    CheckError();
     return out;
 }
 
 void UsageStore::RollUp(int64_t nowUtc, const TimeZone& tz) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         const int64_t cutoff = HourStart(nowUtc) - kRollUpAgeSeconds;
 
         using Key = std::tuple<std::string, int, std::wstring, std::wstring>;
@@ -342,7 +366,7 @@ void UsageStore::RollUp(int64_t nowUtc, const TimeZone& tz) {
         {
             Stmt sel(db_,
                 "SELECT hour_utc, series, adapter_id, network_key, rx, tx FROM usage_hourly WHERE hour_utc < ?1");
-            if (!sel.ok()) return;
+            if (!sel.ok()) return false;
             sel.Int(1, cutoff);
             while (sel.Step()) {
                 auto& v = sums[Key{DayString(LocalDateOf(sel.ColInt(0), tz)), static_cast<int>(sel.ColInt(1)),
@@ -351,58 +375,55 @@ void UsageStore::RollUp(int64_t nowUtc, const TimeZone& tz) {
                 v.second += static_cast<uint64_t>(sel.ColInt(5));
             }
         }
-        if (sums.empty()) return;
+        if (sums.empty()) return true;
 
         Transaction tx(db_);
-        if (!tx.started()) return;
+        if (!tx.started()) return false;
         Stmt ins(db_,
             "INSERT INTO usage_daily(day, series, adapter_id, network_key, rx, tx) VALUES(?1,?2,?3,?4,?5,?6)"
             " ON CONFLICT(day, series, adapter_id, network_key)"
             " DO UPDATE SET rx = rx + excluded.rx, tx = tx + excluded.tx");
-        if (!ins.ok()) return;
+        if (!ins.ok()) return false;
         for (const auto& [k, v] : sums) {
             ins.Text(1, std::get<0>(k)).Int(2, std::get<1>(k)).Text(3, std::get<2>(k)).Text(4, std::get<3>(k))
                .Int(5, static_cast<int64_t>(v.first)).Int(6, static_cast<int64_t>(v.second));
-            if (!ins.Run()) return;
+            if (!ins.Run()) return false;
         }
         Stmt del(db_, "DELETE FROM usage_hourly WHERE hour_utc < ?1");
         del.Int(1, cutoff);
-        if (!del.Run()) return;
-        tx.Commit();
+        if (!del.Run()) return false;
+        return tx.Commit();
     });
 }
 
 void UsageStore::ClearAll() {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Transaction tx(db_);
-        if (!tx.started()) return;
-        if (!Exec(db_, "DELETE FROM usage_hourly") || !Exec(db_, "DELETE FROM usage_daily")) return;
-        tx.Commit();
+        if (!tx.started()) return false;
+        if (!Exec(db_, "DELETE FROM usage_hourly") || !Exec(db_, "DELETE FROM usage_daily")) return false;
+        return tx.Commit();
     });
 }
 
 void UsageStore::ClearAdapter(const std::wstring& id) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Transaction tx(db_);
-        if (!tx.started()) return;
+        if (!tx.started()) return false;
         Stmt h(db_, "DELETE FROM usage_hourly WHERE adapter_id = ?1");
         Stmt d(db_, "DELETE FROM usage_daily WHERE adapter_id = ?1");
-        if (!h.Text(1, id).Run() || !d.Text(1, id).Run()) return;
-        tx.Commit();
+        if (!h.Text(1, id).Run() || !d.Text(1, id).Run()) return false;
+        return tx.Commit();
     });
 }
 
 void UsageStore::ClearNetwork(const std::wstring& key) {
-    Guard([&] {
-        if (!db_) return;
+    Write([&] {
         Transaction tx(db_);
-        if (!tx.started()) return;
+        if (!tx.started()) return false;
         Stmt h(db_, "DELETE FROM usage_hourly WHERE network_key = ?1");
         Stmt d(db_, "DELETE FROM usage_daily WHERE network_key = ?1");
-        if (!h.Text(1, key).Run() || !d.Text(1, key).Run()) return;
-        tx.Commit();
+        if (!h.Text(1, key).Run() || !d.Text(1, key).Run()) return false;
+        return tx.Commit();
     });
 }
 
