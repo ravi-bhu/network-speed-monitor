@@ -13,6 +13,7 @@ add_executable(nsm_tests
   test_adapters.cpp
   test_internet_route.cpp
   test_network_identity.cpp
+  test_civil_date.cpp
   test_periods.cpp
   ${CMAKE_SOURCE_DIR}/res/strings.rc
 )

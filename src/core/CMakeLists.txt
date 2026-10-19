@@ -4,6 +4,7 @@ add_library(nsm_core STATIC
   sampler.cpp
   speed_history.cpp
   overlay_layout.cpp
+  civil_date.cpp
   time_zone.cpp
   periods.cpp
 )

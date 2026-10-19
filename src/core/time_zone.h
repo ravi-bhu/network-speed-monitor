@@ -15,8 +15,9 @@ public:
     static std::optional<TimeZone> FromKey(const std::wstring& key); // e.g. L"Pacific Standard Time"
 
     LocalDateTime ToLocal(int64_t utcSec) const;
-    // Nonexistent (spring-forward gap) or ambiguous (fall-back repeat) local times
-    // resolve to the earliest valid instant.
+    // Ambiguous local time (fall-back repeat): the earlier of the two instants.
+    // Nonexistent local time (inside a spring-forward gap): the transition instant,
+    // i.e. the first valid instant after the gap.
     int64_t ToUtc(const LocalDateTime& t) const;
 
 private:

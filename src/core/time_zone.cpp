@@ -1,32 +1,12 @@
 #include "core/time_zone.h"
 
+#include "core/civil_date.h"
+
 #include <windows.h>
 
 namespace nsm {
 
 namespace {
-
-// Howard Hinnant's civil-date algorithms (proleptic Gregorian, days since 1970-01-01).
-int64_t DaysFromCivil(int y, int m, int d) {
-    y -= m <= 2;
-    const int64_t era = (y >= 0 ? y : y - 399) / 400;
-    const int64_t yoe = y - era * 400;
-    const int64_t doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + d - 1;
-    const int64_t doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    return era * 146097 + doe - 719468;
-}
-
-void CivilFromDays(int64_t z, int& y, int& m, int& d) {
-    z += 719468;
-    const int64_t era = (z >= 0 ? z : z - 146096) / 146097;
-    const int64_t doe = z - era * 146097;
-    const int64_t yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    const int64_t doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    const int64_t mp = (5 * doy + 2) / 153;
-    d = static_cast<int>(doy - (153 * mp + 2) / 5 + 1);
-    m = static_cast<int>(mp < 10 ? mp + 3 : mp - 9);
-    y = static_cast<int>(yoe + era * 400 + (m <= 2));
-}
 
 int64_t FloorDiv(int64_t a, int64_t b) { return a / b - ((a % b != 0) && ((a < 0) != (b < 0))); }
 
@@ -50,7 +30,8 @@ LocalDateTime UtcBreakdown(int64_t sec) {
     const int64_t days = FloorDiv(sec, 86400);
     const int64_t rem = sec - days * 86400;
     LocalDateTime r;
-    CivilFromDays(days, r.year, r.month, r.day);
+    const LocalDate d = CivilFromDays(days);
+    r.year = d.year; r.month = d.month; r.day = d.day;
     r.hour = static_cast<int>(rem / 3600);
     r.minute = static_cast<int>(rem % 3600 / 60);
     r.second = static_cast<int>(rem % 60);
@@ -107,6 +88,16 @@ int64_t TimeZone::ToUtc(const LocalDateTime& t) const {
     for (int64_t off : {-7200, -3600, -1800, 1800, 3600, 7200}) {
         const int64_t cand = api + off;
         if (matches(cand) && (!found || cand < best)) { best = cand; found = true; }
+    }
+    if (!found) {
+        // Nonexistent local time (spring-forward gap): the first instant whose local
+        // time is at or after the requested one, i.e. the transition instant.
+        int64_t lo = api - 7200, hi = api + 7200;  // local(lo) < want <= local(hi)
+        while (hi - lo > 1) {
+            const int64_t mid = lo + (hi - lo) / 2;
+            if (UtcSeconds(ToLocal(mid)) >= want) hi = mid; else lo = mid;
+        }
+        return hi;
     }
     return best;
 }

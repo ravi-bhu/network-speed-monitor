@@ -72,10 +72,8 @@ TEST_CASE("ToUtc: nonexistent and ambiguous local times give the earliest instan
     auto pst = Pst();
     // Fall-back: 01:30 occurs twice on 2026-11-01 (08:30Z PDT, 09:30Z PST).
     CHECK(pst.ToUtc({2026,11,1,1,30,0}) == UtcOf(2026,11,1,8,30));
-    // Spring-forward: 02:30 on 2026-03-08 does not exist; the result must be a nearby valid instant.
-    auto gap = pst.ToUtc({2026,3,8,2,30,0});
-    CHECK(gap >= UtcOf(2026,3,8,10,0) - 3600);
-    CHECK(gap <= UtcOf(2026,3,8,10,0) + 3600);
+    // Spring-forward: 02:30 on 2026-03-08 does not exist; resolves to the transition instant.
+    CHECK(pst.ToUtc({2026,3,8,2,30,0}) == UtcOf(2026,3,8,10));
     // Round trip for an ordinary time.
     auto l = pst.ToLocal(UtcOf(2026,7,4,19));
     CHECK(l.hour == 12); CHECK(l.day == 4);
@@ -87,4 +85,12 @@ TEST_CASE("HourStart floors to the hour") {
 TEST_CASE("FirstDayOfWeekFromLocale returns 0..6" * doctest::test_suite("integration")) {
     int d = FirstDayOfWeekFromLocale();
     CHECK(d >= 0); CHECK(d <= 6);
+}
+TEST_CASE("Midnight inside a DST gap starts the day at the transition" * doctest::test_suite("integration")) {
+    // Egypt: on 2026-04-24 clocks jump 00:00 EET (UTC+2) -> 01:00 EEST (UTC+3); local midnight does not exist.
+    auto eg = TimeZone::FromKey(L"Egypt Standard Time");
+    REQUIRE(eg);
+    auto r = ResolvePeriod(Period::Today, UtcOf(2026,4,24,12), *eg, 0);
+    CHECK(r.begin == UtcOf(2026,4,23,22));
+    CHECK(r.end == UtcOf(2026,4,24,21));   // next midnight is EEST: 23 hours
 }
