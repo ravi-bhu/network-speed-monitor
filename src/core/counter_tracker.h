@@ -9,6 +9,7 @@ struct CounterReading { uint64_t rxBytes; uint64_t txBytes; uint64_t linkBitsPer
 struct TrackerResult { bool speedValid = false; Speed speed; uint64_t rxDelta = 0, txDelta = 0; };
 
 inline constexpr double kGapSeconds = 3.0;
+inline constexpr double kPlausibilityMargin = 1.1;   // a delta may exceed the link speed by 10% before it's dropped
 inline constexpr uint64_t kUnknownLinkBitsPerSec = 100'000'000'000ull;
 
 class CounterTracker {
