@@ -80,7 +80,6 @@ private:
 
     void PaintCanvas(HWND canvas, HDC dc);
     void PaintTabs(HWND tabs);
-    LRESULT DrawDarkCheckbox(NMCUSTOMDRAW* cd);
     void SetHot(int index, bool fromKeyboard);
     std::wstring BarTip(int index) const;
     ReportTheme CurrentTheme() const;

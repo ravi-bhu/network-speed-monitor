@@ -213,9 +213,11 @@ void WriteControls(HWND dlg, const SettingsDialogState& st) {
     CheckRadioButton(dlg, IDC_SET_PRIMARY, IDC_SET_ALL, st.allTaskbars ? IDC_SET_ALL : IDC_SET_PRIMARY);
 }
 
+}  // namespace
+
 // Dark check boxes and radio buttons: the themed button ignores WM_CTLCOLORSTATIC and keeps black text,
-// so they are drawn here (the same approach as the report's "Show hidden adapters" box).
-LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const DialogTheme& theme) {
+// so they are drawn here. The report's "Show hidden adapters" box uses this too.
+LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const ReportPalette& palette, HBRUSH background) {
     if (cd->dwDrawStage != CDDS_PREPAINT) return CDRF_DODEFAULT;
     const HWND button = cd->hdr.hwndFrom;
     const LONG style = static_cast<LONG>(GetWindowLongPtrW(button, GWL_STYLE)) & BS_TYPEMASK;
@@ -227,7 +229,7 @@ LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const DialogTheme& theme) {
     auto scale = [dpi](int v) { return MulDiv(v, static_cast<int>(dpi), 96); };
     HDC dc = cd->hdc;
     const RECT rc = cd->rc;
-    FillRect(dc, &rc, theme.brush);
+    FillRect(dc, &rc, background);
     const bool checked = Button_GetCheck(button) == BST_CHECKED;
     // The dark button theme draws an unchecked box as a solid white square, which reads as "checked", so the
     // glyph is drawn here: an outline, filled with the accent colour when set.
@@ -235,15 +237,15 @@ LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const DialogTheme& theme) {
     RECT boxRect{rc.left, rc.top + (rc.bottom - rc.top - size) / 2, rc.left + size, 0};
     boxRect.bottom = boxRect.top + size;
     const bool hot = (cd->uItemState & (CDIS_HOT | CDIS_SELECTED)) != 0;
-    const COLORREF edge = hot ? theme.palette.accent : theme.palette.muted;
+    const COLORREF edge = hot ? palette.accent : palette.muted;
     HPEN pen = CreatePen(PS_SOLID, std::max(1, scale(1)), edge);
-    HBRUSH fill = CreateSolidBrush(checked && !radio ? theme.palette.accent : theme.palette.surface);
+    HBRUSH fill = CreateSolidBrush(checked && !radio ? palette.accent : palette.surface);
     HGDIOBJ oldPen = SelectObject(dc, pen);
     HGDIOBJ oldBrush = SelectObject(dc, fill);
     if (radio) {
         Ellipse(dc, boxRect.left, boxRect.top, boxRect.right, boxRect.bottom);
         if (checked) {
-            HBRUSH dot = CreateSolidBrush(theme.palette.accent);
+            HBRUSH dot = CreateSolidBrush(palette.accent);
             SelectObject(dc, dot);
             SelectObject(dc, GetStockObject(NULL_PEN));
             const int inset = scale(3);
@@ -275,7 +277,7 @@ LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const DialogTheme& theme) {
     text.left = boxRect.right + scale(5);
     HGDIOBJ old = SelectObject(dc, reinterpret_cast<HFONT>(SendMessageW(button, WM_GETFONT, 0, 0)));
     SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, theme.palette.text);
+    SetTextColor(dc, palette.text);
     DrawTextW(dc, label.c_str(), -1, &text, format);
     if ((cd->uItemState & CDIS_FOCUS) && !(ui & UISF_HIDEFOCUS)) {
         RECT focus = text;
@@ -289,6 +291,8 @@ LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const DialogTheme& theme) {
     SelectObject(dc, old);
     return CDRF_SKIPDEFAULT;
 }
+
+namespace {
 
 INT_PTR CALLBACK SettingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     auto* s = reinterpret_cast<SettingsState*>(GetWindowLongPtrW(dlg, DWLP_USER));
@@ -338,7 +342,8 @@ INT_PTR CALLBACK SettingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
             GetClassNameW(hdr->hwndFrom, cls, static_cast<int>(std::size(cls)));
             if (_wcsicmp(cls, kButtonClass) == 0) {
                 SetWindowLongPtrW(dlg, DWLP_MSGRESULT,
-                                  DrawDarkToggle(reinterpret_cast<const NMCUSTOMDRAW*>(lp), s->theme));
+                                  DrawDarkToggle(reinterpret_cast<const NMCUSTOMDRAW*>(lp), s->theme.palette,
+                                                 s->theme.brush));
                 return TRUE;
             }
         }

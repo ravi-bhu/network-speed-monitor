@@ -905,48 +905,6 @@ void ReportWindow::PaintTabs(HWND tabs) {
     EndPaint(tabs, &ps);
 }
 
-LRESULT ReportWindow::DrawDarkCheckbox(NMCUSTOMDRAW* cd) {
-    if (cd->dwDrawStage != CDDS_PREPAINT) return CDRF_DODEFAULT;
-    HDC dc = cd->hdc;
-    const RECT rc = cd->rc;
-    FillRect(dc, &rc, backgroundBrush_);
-    const bool checked = Button_GetCheck(showHiddenBox_) == BST_CHECKED;
-    int state = checked ? CBS_CHECKEDNORMAL : CBS_UNCHECKEDNORMAL;
-    if (cd->uItemState & CDIS_SELECTED) state += 2;  // pressed
-    else if (cd->uItemState & CDIS_HOT) state += 1;  // hot
-    HTHEME theme = OpenThemeDataForDpi(showHiddenBox_, L"Button", dpi_);
-    SIZE box{Scale(13), Scale(13)};
-    if (theme) GetThemePartSize(theme, dc, BP_CHECKBOX, state, nullptr, TS_DRAW, &box);
-    RECT boxRect{rc.left, rc.top + (rc.bottom - rc.top - box.cy) / 2, rc.left + box.cx, 0};
-    boxRect.bottom = boxRect.top + box.cy;
-    if (theme) {
-        DrawThemeBackground(theme, dc, BP_CHECKBOX, state, &boxRect, nullptr);
-        CloseThemeData(theme);
-    } else {
-        DrawFrameControl(dc, &boxRect, DFC_BUTTON, DFCS_BUTTONCHECK | (checked ? DFCS_CHECKED : 0u));
-    }
-    const LRESULT ui = SendMessageW(showHiddenBox_, WM_QUERYUISTATE, 0, 0);
-    const UINT format = DT_SINGLELINE | DT_VCENTER | DT_LEFT | ((ui & UISF_HIDEACCEL) ? DT_HIDEPREFIX : 0u);
-    const std::wstring label = LoadStr(IDS_SHOW_HIDDEN);
-    RECT text = rc;
-    text.left = boxRect.right + Scale(5);
-    HGDIOBJ old = SelectObject(dc, font_);
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, palette_.text);
-    DrawTextW(dc, label.c_str(), -1, &text, format);
-    if ((cd->uItemState & CDIS_FOCUS) && !(ui & UISF_HIDEFOCUS)) {
-        RECT focus = text;
-        DrawTextW(dc, label.c_str(), -1, &focus, format | DT_CALCRECT);
-        const int h = focus.bottom - focus.top;
-        focus.top = text.top + (text.bottom - text.top - h) / 2;
-        focus.bottom = focus.top + h;
-        InflateRect(&focus, 2, 1);
-        DrawFocusRect(dc, &focus);
-    }
-    SelectObject(dc, old);
-    return CDRF_SKIPDEFAULT;
-}
-
 std::wstring ReportWindow::BarTip(int index) const {
     const TimelineBar& bar = timelineView_.bars[static_cast<size_t>(index)];
     return BarTitle(bar.start, timelineView_.granularity) + L"\r\n" +
@@ -1123,7 +1081,8 @@ LRESULT ReportWindow::HandleNotify(NMHDR* nm) {
         return 0;
     }
     if (nm->hwndFrom == showHiddenBox_ && nm->code == NM_CUSTOMDRAW && theme_ == ReportTheme::Dark) {
-        return DrawDarkCheckbox(reinterpret_cast<NMCUSTOMDRAW*>(nm));
+        // Not the theme glyph: under the dark theme an unchecked box draws as a solid white square.
+        return DrawDarkToggle(reinterpret_cast<const NMCUSTOMDRAW*>(nm), palette_, backgroundBrush_);
     }
     for (TableState* t : {adapters_.get(), wifi_.get()}) {
         if (nm->hwndFrom != t->list || nm->code != LVN_COLUMNCLICK) continue;
