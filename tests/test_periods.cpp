@@ -1,17 +1,13 @@
 #include "doctest.h"
 
-#include <ctime>
-
+#include "core/civil_date.h"
 #include "core/periods.h"
 
 using namespace nsm;
 
 namespace {
-int64_t UtcOf(int y, int mo, int d, int h, int mi = 0) {
-    std::tm tm{};
-    tm.tm_year = y - 1900; tm.tm_mon = mo - 1; tm.tm_mday = d; tm.tm_hour = h; tm.tm_min = mi;
-    return _mkgmtime(&tm);
-}
+// Not _mkgmtime: its range starts around 1970 (Wine's rejects 1969 outright), and these tests reach 1500 and 70000.
+int64_t UtcOf(int y, int mo, int d, int h, int mi = 0) { return DaysFromCivil(y, mo, d) * 86400 + h * 3600 + mi * 60; }
 TimeZone Pst() { return *TimeZone::FromKey(L"Pacific Standard Time"); }
 TimeZone Zone(const wchar_t* key) {
     auto tz = TimeZone::FromKey(key);
@@ -52,6 +48,19 @@ TEST_CASE("Yesterday, months and year" * doctest::test_suite("integration")) {
     CHECK(lm.begin == UtcOf(2025,12,1,8)); CHECK(lm.end == UtcOf(2026,1,1,8));
     auto yr = ResolvePeriod(Period::ThisYear, now, pst, 0);
     CHECK(yr.begin == UtcOf(2026,1,1,8)); CHECK(yr.end == UtcOf(2027,1,1,8));
+}
+TEST_CASE("Months and Last30Days across a leap day" * doctest::test_suite("integration")) {
+    auto pst = Pst();
+    auto now = UtcOf(2028,3,10,20);   // 12:00 PST, before the DST change on Mar 12
+    auto lm = ResolvePeriod(Period::LastMonth, now, pst, 0);   // February 2028 has 29 days
+    CHECK(lm.begin == UtcOf(2028,2,1,8)); CHECK(lm.end == UtcOf(2028,3,1,8));
+    auto l30 = ResolvePeriod(Period::Last30Days, now, pst, 0);  // Feb 10 .. Mar 10, Feb 29 included
+    CHECK(l30.begin == UtcOf(2028,2,10,8)); CHECK(l30.end == UtcOf(2028,3,11,8));
+    auto leap = UtcOf(2028,2,29,20);
+    auto td = ResolvePeriod(Period::Today, leap, pst, 0);
+    CHECK(td.begin == UtcOf(2028,2,29,8)); CHECK(td.end == UtcOf(2028,3,1,8));
+    auto mo = ResolvePeriod(Period::ThisMonth, leap, pst, 0);
+    CHECK(mo.begin == UtcOf(2028,2,1,8)); CHECK(mo.end == UtcOf(2028,3,1,8));
 }
 TEST_CASE("Last30Days is today plus 29 previous days" * doctest::test_suite("integration")) {
     auto pst = Pst();
@@ -126,6 +135,29 @@ TEST_CASE("LocalHourStart across Lord Howe's 30-minute DST" * doctest::test_suit
     CHECK(LocalHourStart(off + 1800, lh) == off + 1800);      // 02:00 LHST
 }
 
+TEST_CASE("Today on Lord Howe's 30-minute DST days" * doctest::test_suite("integration")) {
+    const auto lh = Zone(L"Lord Howe Standard Time");
+    // 2026-10-04: midnight is LHST (+10:30), the next one LHDT (+11): 23.5 hours.
+    auto on = ResolvePeriod(Period::Today, UtcOf(2026, 10, 3, 20), lh, 0);
+    CHECK(on.begin == UtcOf(2026, 10, 3, 13, 30)); CHECK(on.end == UtcOf(2026, 10, 4, 13));
+    // 2026-04-05: midnight is LHDT (+11), the next one LHST (+10:30): 24.5 hours.
+    auto off = ResolvePeriod(Period::Today, UtcOf(2026, 4, 4, 20), lh, 0);
+    CHECK(off.begin == UtcOf(2026, 4, 4, 13)); CHECK(off.end == UtcOf(2026, 4, 5, 13, 30));
+}
+
+TEST_CASE("Dates outside SYSTEMTIME's range use the zone's standard offset" * doctest::test_suite("integration")) {
+    const auto pst = Pst();
+    const LocalDateTime early = pst.ToLocal(UtcOf(1500, 6, 1, 12));   // before 1601
+    CHECK(early.year == 1500); CHECK(early.month == 6); CHECK(early.day == 1); CHECK(early.hour == 4);
+    CHECK(pst.ToUtc({1500, 6, 1, 4, 0, 0}) == UtcOf(1500, 6, 1, 12));
+    const LocalDateTime late = pst.ToLocal(UtcOf(70000, 7, 1, 12));   // past 30827, and past a WORD
+    CHECK(late.year == 70000); CHECK(late.month == 7); CHECK(late.day == 1); CHECK(late.hour == 4);
+    CHECK(pst.ToUtc({70000, 7, 1, 4, 0, 0}) == UtcOf(70000, 7, 1, 12));
+    const auto lh = Zone(L"Lord Howe Standard Time");
+    const LocalDateTime lhEarly = lh.ToLocal(UtcOf(1500, 6, 1, 12));  // +10:30
+    CHECK(lhEarly.hour == 22); CHECK(lhEarly.minute == 30);
+}
+
 TEST_CASE("FirstDayOfWeekFromLocale returns 0..6" * doctest::test_suite("integration")) {
     int d = FirstDayOfWeekFromLocale();
     CHECK(d >= 0); CHECK(d <= 6);
@@ -133,7 +165,10 @@ TEST_CASE("FirstDayOfWeekFromLocale returns 0..6" * doctest::test_suite("integra
 TEST_CASE("Midnight inside a DST gap starts the day at the transition" * doctest::test_suite("integration")) {
     // Egypt: on 2026-04-24 clocks jump 00:00 EET (UTC+2) -> 01:00 EEST (UTC+3); local midnight does not exist.
     auto eg = TimeZone::FromKey(L"Egypt Standard Time");
-    REQUIRE(eg);
+    if (!eg) {
+        MESSAGE("No \"Egypt Standard Time\" in this host's time-zone database; skipped.");
+        return;
+    }
     auto r = ResolvePeriod(Period::Today, UtcOf(2026,4,24,12), *eg, 0);
     CHECK(r.begin == UtcOf(2026,4,23,22));
     CHECK(r.end == UtcOf(2026,4,24,21));   // next midnight is EEST: 23 hours

@@ -1,7 +1,7 @@
 #include "platform/settings.h"
 
+#include <atomic>
 #include <cerrno>
-#include <cstdio>
 #include <cstdlib>
 #include <vector>
 
@@ -46,9 +46,29 @@ std::optional<LONG> ReadLong(const wchar_t* key, const std::wstring& path) {
     return static_cast<LONG>(x);
 }
 
-bool Write(const wchar_t* section, const wchar_t* key, const std::wstring& value,
-           const std::wstring& path) {
-    return WritePrivateProfileStringW(section, key, value.c_str(), path.c_str()) != FALSE;
+void AppendKey(std::wstring& out, const wchar_t* key, const std::wstring& value) {
+    out += key;
+    out += L'=';
+    out += value;
+    out += L"\r\n";
+}
+
+// Creates <ini>.<pid>.<n>.tmp exclusively, so concurrent saves never share a temp file.
+HANDLE CreateTempFile(const std::filesystem::path& ini, std::wstring& tmpPath) {
+    static std::atomic<unsigned> counter{0};
+    for (int attempt = 0; attempt < 16; ++attempt) {
+        std::filesystem::path tmp = ini;
+        tmp += L"." + std::to_wstring(GetCurrentProcessId()) + L"." + std::to_wstring(counter++) +
+               L".tmp";
+        tmpPath = tmp.wstring();
+        HANDLE h = CreateFileW(tmpPath.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                               FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (h != INVALID_HANDLE_VALUE) return h;
+        DWORD err = GetLastError();
+        if (err != ERROR_FILE_EXISTS && err != ERROR_ALREADY_EXISTS) break;
+        // The name is taken (a leftover from a save that crashed): try the next n.
+    }
+    return INVALID_HANDLE_VALUE;
 }
 
 }  // namespace
@@ -73,41 +93,35 @@ Settings LoadSettings(const std::filesystem::path& ini) {
 }
 
 bool SaveSettings(const std::filesystem::path& ini, const Settings& s) {
-    std::filesystem::path tmp = ini;
-    tmp += L".tmp";
-    const std::wstring tmpPath = tmp.wstring();
-
-    // Start from a fresh UTF-16 (BOM) file so the profile APIs store text as Unicode.
-    {
-        FILE* f = nullptr;
-        if (_wfopen_s(&f, tmpPath.c_str(), L"wb") != 0 || !f) return false;
-        const unsigned char bom[2] = {0xFF, 0xFE};
-        bool ok = fwrite(bom, 1, 2, f) == 2;
-        ok = (fclose(f) == 0) && ok;
-        if (!ok) {
-            DeleteFileW(tmpPath.c_str());
-            return false;
-        }
-    }
-
-    bool ok = Write(kGeneral, L"StartWithWindows", s.startWithWindows ? L"1" : L"0", tmpPath) &&
-              Write(kGeneral, L"Adapter", s.adapterId, tmpPath) &&
-              Write(kGeneral, L"Units", s.units == UnitMode::Bits ? L"bits" : L"bytes", tmpPath) &&
-              Write(kGeneral, L"ShowGraph", s.showGraph ? L"1" : L"0", tmpPath) &&
-              Write(kGeneral, L"Letters", s.letters ? L"1" : L"0", tmpPath) &&
-              Write(kGeneral, L"AllTaskbars", s.allTaskbars ? L"1" : L"0", tmpPath);
-    if (ok && s.reportRect) {
+    // The file is written directly instead of with WritePrivateProfileString, whose cache flush
+    // call has no usable return value, so a failed write could not be reported. The format is
+    // what the profile API reads: UTF-16 with a BOM.
+    std::wstring text = L"\xFEFF[General]\r\n";
+    AppendKey(text, L"StartWithWindows", s.startWithWindows ? L"1" : L"0");
+    AppendKey(text, L"Adapter", s.adapterId);
+    AppendKey(text, L"Units", s.units == UnitMode::Bits ? L"bits" : L"bytes");
+    AppendKey(text, L"ShowGraph", s.showGraph ? L"1" : L"0");
+    AppendKey(text, L"Letters", s.letters ? L"1" : L"0");
+    AppendKey(text, L"AllTaskbars", s.allTaskbars ? L"1" : L"0");
+    if (s.reportRect) {
         const RECT& r = *s.reportRect;
-        ok = Write(kReport, L"Left", std::to_wstring(r.left), tmpPath) &&
-             Write(kReport, L"Top", std::to_wstring(r.top), tmpPath) &&
-             Write(kReport, L"Right", std::to_wstring(r.right), tmpPath) &&
-             Write(kReport, L"Bottom", std::to_wstring(r.bottom), tmpPath);
+        text += L"[ReportWindow]\r\n";
+        AppendKey(text, L"Left", std::to_wstring(r.left));
+        AppendKey(text, L"Top", std::to_wstring(r.top));
+        AppendKey(text, L"Right", std::to_wstring(r.right));
+        AppendKey(text, L"Bottom", std::to_wstring(r.bottom));
     }
-    if (ok) {
-        WritePrivateProfileStringW(nullptr, nullptr, nullptr, tmpPath.c_str());  // flush cache
-        ok = MoveFileExW(tmpPath.c_str(), ini.c_str(),
-                         MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
-    }
+
+    std::wstring tmpPath;
+    HANDLE h = CreateTempFile(ini, tmpPath);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    const DWORD bytes = static_cast<DWORD>(text.size() * sizeof(wchar_t));
+    DWORD written = 0;
+    bool ok = WriteFile(h, text.data(), bytes, &written, nullptr) != FALSE && written == bytes;
+    ok = ok && FlushFileBuffers(h) != FALSE;
+    ok = (CloseHandle(h) != FALSE) && ok;
+    ok = ok && MoveFileExW(tmpPath.c_str(), ini.c_str(),
+                           MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
     if (!ok) DeleteFileW(tmpPath.c_str());
     return ok;
 }

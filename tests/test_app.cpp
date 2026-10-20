@@ -116,6 +116,21 @@ TEST_CASE("BuildAdapterMenu keeps a pinned adapter that is absent or hidden, so 
     CHECK(menu[2].checked);
 }
 
+TEST_CASE("BuildAdapterMenu leaves out adapters a user would not recognize, unless pinned") {
+    AdapterInfo direct = Present(L"{D}", L"Local Area Connection* 2");
+    direct.recognizable = false;
+    const std::vector<AdapterInfo> present{Present(L"{W}", L"Wi-Fi"), direct};
+
+    auto menu = BuildAdapterMenu(present, {}, L"", L"Automatic");
+    REQUIRE(menu.size() == 2);
+    CHECK(menu[1].id == L"{W}");
+
+    menu = BuildAdapterMenu(present, {}, L"{D}", L"Automatic");
+    REQUIRE(menu.size() == 3);
+    CHECK(menu[1].id == L"{D}");
+    CHECK(menu[1].checked);
+}
+
 TEST_CASE("EscapeMenuText doubles ampersands so names are not read as mnemonics") {
     CHECK(EscapeMenuText(L"R&D LAN") == L"R&&D LAN");
     CHECK(EscapeMenuText(L"&&") == L"&&&&");
@@ -222,4 +237,122 @@ TEST_CASE("ArgValue finds a flag's value on the command line") {
           L"C:\\x y\\t.csv");
     CHECK(ArgValue(L"NetworkSpeedMonitor.exe --trace", L"--trace") == L"");
     CHECK(ArgValue(L"NetworkSpeedMonitor.exe", L"--trace") == L"");
+}
+
+TEST_CASE("RecordTick: each adapter row carries its own network, the internet row the internet adapter's") {
+    std::map<std::wstring, NetworkIdentity> nets;
+    nets[L"{W}"] = NetworkIdentity{L"{HOME}", L"Home"};
+    nets[L"{V}"] = NetworkIdentity{L"{CORP}", L"Corp"};
+    TickResult t;
+    t.perAdapter = {UsageDelta{L"{W}", 100, 10}, UsageDelta{L"{V}", 40, 4}, UsageDelta{L"{E}", 7, 1}};
+    t.internet = UsageDelta{L"{V}", 40, 4};  // the internet goes through the VPN
+
+    UsageAccumulator acc;
+    const int64_t h10 = UtcOf(2026, 10, 18, 10);
+    RecordTick(acc, h10, t, nets);
+    const std::vector<UsageRow> rows = acc.Take();
+    REQUIRE(rows.size() == 4);
+    int adapterRows = 0, internetRows = 0;
+    for (const auto& r : rows) {
+        CHECK(r.hourUtc == h10);
+        if (r.series == Series::Internet) {
+            ++internetRows;
+            CHECK(r.adapterId == L"{V}");
+            CHECK(r.networkKey == L"{CORP}");
+            CHECK(r.rx == 40);
+            CHECK(r.tx == 4);
+            continue;
+        }
+        ++adapterRows;
+        if (r.adapterId == L"{W}") {
+            CHECK(r.networkKey == L"{HOME}");
+            CHECK(r.rx == 100);
+            CHECK(r.tx == 10);
+        } else if (r.adapterId == L"{V}") {
+            CHECK(r.networkKey == L"{CORP}");
+        } else {
+            CHECK(r.adapterId == L"{E}");
+            CHECK(r.networkKey == L"");  // no known network
+        }
+    }
+    CHECK(adapterRows == 3);
+    CHECK(internetRows == 1);
+}
+
+TEST_CASE("RecordTick without internet traffic writes adapter rows only") {
+    TickResult t;
+    t.perAdapter = {UsageDelta{L"{W}", 5, 5}};
+    UsageAccumulator acc;
+    RecordTick(acc, UtcOf(2026, 10, 18, 10), t, {});
+    const std::vector<UsageRow> rows = acc.Take();
+    REQUIRE(rows.size() == 1);
+    CHECK(rows[0].series == Series::Adapter);
+    CHECK(rows[0].networkKey == L"");
+
+    RecordTick(acc, UtcOf(2026, 10, 18, 10), TickResult{}, {});
+    CHECK(acc.Empty());
+}
+
+TEST_CASE("AdaptersToSave: present adapters whose stored name or kind differs, or that are not stored") {
+    std::vector<AdapterInfo> present{Present(L"{A}", L"Ethernet"), Present(L"{B}", L"Wi-Fi"), Present(L"{C}", L"New")};
+    present[1].kind = AdapterKind::WiFi;
+    std::vector<AdapterMeta> stored{Stored(L"{A}", L"Ethernet", L"Desk"), Stored(L"{B}", L"Wi-Fi")};
+    stored[1].kind = AdapterKind::Ethernet;
+
+    const std::vector<AdapterInfo> out = AdaptersToSave(present, stored);
+    REQUIRE(out.size() == 2);
+    CHECK(out[0].id == L"{B}");  // kind changed
+    CHECK(out[1].id == L"{C}");  // not stored yet
+
+    stored[1].kind = AdapterKind::WiFi;
+    stored.push_back(Stored(L"{C}", L"New"));
+    CHECK(AdaptersToSave(present, stored).empty());
+}
+
+TEST_CASE("AdaptersToSave offers a write that did not land again, since only the store's rows count as saved") {
+    const std::vector<AdapterInfo> present{Present(L"{A}", L"Ethernet")};
+    // The upsert failed (e.g. the database was locked), so reading the adapters back still lacks it.
+    const std::vector<AdapterMeta> afterFailedWrite;
+    CHECK(AdaptersToSave(present, afterFailedWrite).size() == 1);
+    CHECK(AdaptersToSave(present, afterFailedWrite).size() == 1);  // and again at the next refresh
+}
+
+TEST_CASE("NetworksToSave: named networks not stored or renamed, each key once") {
+    std::map<std::wstring, NetworkIdentity> nets;
+    nets[L"{A}"] = NetworkIdentity{L"{HOME}", L"Home"};
+    nets[L"{B}"] = NetworkIdentity{L"{HOME}", L"Home"};  // two adapters on one network
+    nets[L"{C}"] = NetworkIdentity{L"{CAFE}", L"Cafe 2"};
+    nets[L"{D}"] = NetworkIdentity{L"", L"Unidentified"};  // no key: nothing to save
+    const std::vector<NetworkMeta> stored{NetworkMeta{L"{CAFE}", L"Cafe"}};
+
+    const std::vector<NetworkMeta> out = NetworksToSave(nets, stored);
+    REQUIRE(out.size() == 2);
+    CHECK(out[0].key == L"{HOME}");
+    CHECK(out[0].name == L"Home");
+    CHECK(out[1].key == L"{CAFE}");
+    CHECK(out[1].name == L"Cafe 2");
+
+    const std::vector<NetworkMeta> saved{NetworkMeta{L"{CAFE}", L"Cafe 2"}, NetworkMeta{L"{HOME}", L"Home"}};
+    CHECK(NetworksToSave(nets, saved).empty());
+    CHECK(NetworksToSave(nets, {}).size() == 2);  // a failed write is not in the store: offered again
+}
+
+TEST_CASE("FollowDisplayAdapter clears the graph when the shown adapter changes") {
+    SpeedHistory history;
+    std::wstring shown;
+    CHECK(FollowDisplayAdapter(shown, L"{W}", history));  // first tick: nothing to keep
+    CHECK(shown == L"{W}");
+    history.Push(Speed{1000, 100});
+    history.Push(Speed{2000, 200});
+
+    CHECK_FALSE(FollowDisplayAdapter(shown, L"{W}", history));
+    CHECK(history.Size() == 2);
+
+    CHECK(FollowDisplayAdapter(shown, L"{E}", history));  // pinned another adapter
+    CHECK(shown == L"{E}");
+    CHECK(history.Size() == 0);
+
+    history.Push(Speed{1, 1});
+    CHECK(FollowDisplayAdapter(shown, L"", history));  // Automatic with no internet adapter
+    CHECK(history.Size() == 0);
 }

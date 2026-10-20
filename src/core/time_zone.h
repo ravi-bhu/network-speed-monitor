@@ -11,9 +11,11 @@ struct LocalDateTime { int year = 0, month = 0, day = 0, hour = 0, minute = 0, s
 // A Windows dynamic time zone. Copies share the (immutable) zone data.
 class TimeZone {
 public:
-    static TimeZone Local();                                         // current system zone
+    static TimeZone Local();                                         // current system zone; UTC if unreadable
     static std::optional<TimeZone> FromKey(const std::wstring& key); // e.g. L"Pacific Standard Time"
 
+    // Outside SYSTEMTIME's years (1601..30827), or if the Windows conversion fails, both directions
+    // use the zone's standard offset rather than the zone's rules.
     LocalDateTime ToLocal(int64_t utcSec) const;
     // Ambiguous local time (fall-back repeat): the earlier of the two instants.
     // Nonexistent local time (inside a spring-forward gap): the transition instant,

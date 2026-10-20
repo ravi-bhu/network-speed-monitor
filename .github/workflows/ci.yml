@@ -15,7 +15,7 @@ jobs:
   build:
     runs-on: windows-2022
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure x64
         run: cmake -S . -B build -G "Visual Studio 17 2022" -A x64
       - name: Build Debug
@@ -26,6 +26,9 @@ jobs:
         shell: pwsh
         run: |
           ./tools/check_imports.ps1 build\src\ui\Release\NetworkSpeedMonitor.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Import check failed for NetworkSpeedMonitor.exe' }
+          # The self-test relies on the runner's C:\Windows\System32\curl.exe importing ws2_32.dll.
+          # If an image update drops curl.exe or changes its imports, point this at another such binary.
           ./tools/check_imports.ps1 -SelfTest C:\Windows\System32\curl.exe
       - name: Unit tests
         run: build\tests\Release\nsm_tests.exe -tse="integration"

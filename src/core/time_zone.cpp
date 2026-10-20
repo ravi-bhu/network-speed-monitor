@@ -42,13 +42,22 @@ int64_t UtcSeconds(const LocalDateTime& t) {
     return DaysFromCivil(t.year, t.month, t.day) * 86400 + t.hour * 3600 + t.minute * 60 + t.second;
 }
 
+// SYSTEMTIME's range for the conversion APIs; outside it a year would also be truncated to a WORD.
+bool InSystemTimeRange(const LocalDateTime& t) { return t.year >= 1601 && t.year <= 30827; }
+
+// The zone's standard offset (local = UTC + offset), in seconds: used when the conversion APIs can't be.
+int64_t StandardOffset(const DYNAMIC_TIME_ZONE_INFORMATION& z) {
+    return -(static_cast<int64_t>(z.Bias) + z.StandardBias) * 60;
+}
+
 }  // namespace
 
 struct TimeZone::Impl { DYNAMIC_TIME_ZONE_INFORMATION dtzi{}; };
 
 TimeZone TimeZone::Local() {
     auto impl = std::make_shared<Impl>();
-    GetDynamicTimeZoneInformation(&impl->dtzi);
+    // On failure the struct's contents are undefined: use UTC (a zeroed zone has no bias and no DST).
+    if (GetDynamicTimeZoneInformation(&impl->dtzi) == TIME_ZONE_ID_INVALID) impl->dtzi = {};
     return TimeZone(std::move(impl));
 }
 
@@ -66,22 +75,26 @@ std::optional<TimeZone> TimeZone::FromKey(const std::wstring& key) {
 
 LocalDateTime TimeZone::ToLocal(int64_t utcSec) const {
     const LocalDateTime u = UtcBreakdown(utcSec);
-    const SYSTEMTIME in = ToSystemTime(u);
-    SYSTEMTIME out{};
-    if (!SystemTimeToTzSpecificLocalTimeEx(&impl_->dtzi, &in, &out)) return u;
-    return FromSystemTime(out);
+    if (InSystemTimeRange(u)) {
+        const SYSTEMTIME in = ToSystemTime(u);
+        SYSTEMTIME out{};
+        if (SystemTimeToTzSpecificLocalTimeEx(&impl_->dtzi, &in, &out)) return FromSystemTime(out);
+    }
+    return UtcBreakdown(utcSec + StandardOffset(impl_->dtzi));
 }
 
 int64_t TimeZone::ToUtc(const LocalDateTime& t) const {
     const int64_t want = UtcSeconds(t);
+    const int64_t standard = want - StandardOffset(impl_->dtzi);
+    if (!InSystemTimeRange(t)) return standard;
     const SYSTEMTIME in = ToSystemTime(t);
     SYSTEMTIME out{};
-    if (!TzSpecificLocalTimeToSystemTimeEx(&impl_->dtzi, &in, &out)) return want;
+    if (!TzSpecificLocalTimeToSystemTimeEx(&impl_->dtzi, &in, &out)) return standard;
     const int64_t api = UtcSeconds(FromSystemTime(out));
 
     // The API picks one instant for an ambiguous time; scan neighbours for the earliest
     // instant that maps back to the requested wall-clock time. A nonexistent time has
-    // no such instant, so the API's own resolution stands.
+    // no such instant and is resolved below.
     auto matches = [&](int64_t cand) { return UtcSeconds(ToLocal(cand)) == want; };
     int64_t best = api;
     bool found = matches(api);

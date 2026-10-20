@@ -41,8 +41,9 @@ public:
     // nothing was written, so the caller may safely re-add the same rows later.
     bool AddUsage(std::span<const UsageRow> rows);
 
-    // False after any runtime write/IO failure or SQLITE_CORRUPT/NOTADB/IOERR from any call (sticky);
-    // reset to true by a successful Open. Lets the app tell the user the history is not being saved.
+    // False after any runtime write/IO failure or SQLITE_CORRUPT/NOTADB/IOERR from any call; true again after
+    // a successful Open or the next AddUsage that commits rows. Lets the app tell the user the history is not
+    // being saved.
     bool Healthy() const { return healthy_; }
 
     // Busy timeout applied to the connection (default 2000 ms, set by Open). Exposed for tests.
