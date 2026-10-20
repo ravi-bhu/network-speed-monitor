@@ -23,9 +23,9 @@ std::string ToUtf8(const std::wstring& w) {
     return s;
 }
 
-std::wstring FromUtf8(const char* s) {
-    if (!s || !*s) return {};
-    const int len = static_cast<int>(strlen(s));
+// len is in bytes; the text may contain NULs.
+std::wstring FromUtf8(const char* s, int len) {
+    if (!s || len <= 0) return {};
     const int n = MultiByteToWideChar(CP_UTF8, 0, s, len, nullptr, 0);
     std::wstring w(static_cast<size_t>(n), L'\0');
     MultiByteToWideChar(CP_UTF8, 0, s, len, w.data(), n);
@@ -84,12 +84,14 @@ public:
         return rc == SQLITE_DONE || rc == SQLITE_ROW;
     }
     int64_t ColInt(int i) const { return sqlite3_column_int64(s_, i); }
+    // sqlite3_column_bytes must follow sqlite3_column_text, so the length is of the UTF-8 text.
     std::wstring ColText(int i) const {
-        return FromUtf8(reinterpret_cast<const char*>(sqlite3_column_text(s_, i)));
+        const auto* p = reinterpret_cast<const char*>(sqlite3_column_text(s_, i));
+        return FromUtf8(p, sqlite3_column_bytes(s_, i));
     }
     std::string ColUtf8(int i) const {
-        const auto* p = sqlite3_column_text(s_, i);
-        return p ? reinterpret_cast<const char*>(p) : std::string();
+        const auto* p = reinterpret_cast<const char*>(sqlite3_column_text(s_, i));
+        return p ? std::string(p, static_cast<size_t>(sqlite3_column_bytes(s_, i))) : std::string();
     }
 
 private:
@@ -137,9 +139,12 @@ bool IsCorruptionCode(int rc) {
     return primary == SQLITE_CORRUPT || primary == SQLITE_NOTADB;
 }
 
-void Rename(const std::filesystem::path& from, const std::filesystem::path& to) {
+// Renames `from` to `to` if it exists. False only if it exists and could not be moved.
+bool MoveIfPresent(const std::filesystem::path& from, const std::filesystem::path& to) {
     std::error_code ec;
     std::filesystem::rename(from, to, ec);
+    if (!ec) return true;
+    return !std::filesystem::exists(from, ec) && !ec;
 }
 
 }  // namespace
@@ -233,8 +238,18 @@ UsageStore::OpenResult UsageStore::Open(const std::filesystem::path& file) {
         }
         std::filesystem::rename(file, target, ec);
         if (ec) return OpenResult::Failed;
-        Rename(file.wstring() + L"-wal", target.wstring() + L"-wal");
-        Rename(file.wstring() + L"-shm", target.wstring() + L"-shm");
+        // A -wal left behind would be replayed into the fresh database, so a companion file that can't be moved
+        // fails the recovery: put back what was moved, so the next Open finds the same files and tries again.
+        const std::wstring fromBase = file.wstring(), toBase = target.wstring();
+        if (!MoveIfPresent(fromBase + L"-wal", toBase + L"-wal")) {
+            MoveIfPresent(target, file);
+            return OpenResult::Failed;
+        }
+        if (!MoveIfPresent(fromBase + L"-shm", toBase + L"-shm")) {
+            MoveIfPresent(toBase + L"-wal", fromBase + L"-wal");
+            MoveIfPresent(target, file);
+            return OpenResult::Failed;
+        }
 
         a = TryOpen(file);
         if (a != Attempt::Ok) { Close(); return OpenResult::Failed; }
@@ -250,7 +265,7 @@ UsageStore::OpenResult UsageStore::Open(const std::filesystem::path& file) {
 
 bool UsageStore::AddUsage(std::span<const UsageRow> rows) {
     if (rows.empty()) return db_ != nullptr;
-    return Write([&] {
+    const bool ok = Write([&] {
         Transaction tx(db_);
         if (!tx.started()) return false;
         Stmt ins(db_,
@@ -265,6 +280,8 @@ bool UsageStore::AddUsage(std::span<const UsageRow> rows) {
         }
         return tx.Commit();
     });
+    if (ok) healthy_ = true;   // history is being saved again after an earlier transient failure
+    return ok;
 }
 
 void UsageStore::UpsertAdapter(const std::wstring& id, const std::wstring& name, AdapterKind kind) {
@@ -373,6 +390,9 @@ void UsageStore::RollUp(int64_t nowUtc, const TimeZone& tz) {
         // The same cutoff as ReportModel::PickGranularity, on local-hour buckets.
         const int64_t cutoff = LocalHourStart(nowUtc, tz) - kRollUpAgeSeconds;
 
+        // The rows summed are the rows deleted: both statements run in one write transaction.
+        Transaction tx(db_);
+        if (!tx.started()) return false;
         using Key = std::tuple<std::string, int, std::wstring, std::wstring>;
         std::map<Key, std::pair<uint64_t, uint64_t>> sums;
         {
@@ -387,10 +407,8 @@ void UsageStore::RollUp(int64_t nowUtc, const TimeZone& tz) {
                 v.second += static_cast<uint64_t>(sel.ColInt(5));
             }
         }
-        if (sums.empty()) return true;
+        if (sums.empty()) return tx.Commit();
 
-        Transaction tx(db_);
-        if (!tx.started()) return false;
         Stmt ins(db_,
             "INSERT INTO usage_daily(day, series, adapter_id, network_key, rx, tx) VALUES(?1,?2,?3,?4,?5,?6)"
             " ON CONFLICT(day, series, adapter_id, network_key)"
