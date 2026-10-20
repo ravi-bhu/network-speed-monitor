@@ -15,7 +15,7 @@ TrackerResult CounterTracker::Update(const CounterReading& r) {
 
     const uint64_t rxD = r.rxBytes - prev.rxBytes;
     const uint64_t txD = r.txBytes - prev.txBytes;
-    const double cap = static_cast<double>(r.linkBitsPerSec ? r.linkBitsPerSec : kUnknownLinkBitsPerSec) / 8.0 * dt * 1.1;
+    const double cap = static_cast<double>(r.linkBitsPerSec ? r.linkBitsPerSec : kUnknownLinkBitsPerSec) / 8.0 * dt * kPlausibilityMargin;
     if (static_cast<double>(rxD) > cap || static_cast<double>(txD) > cap) return out;
 
     out.rxDelta = rxD;
