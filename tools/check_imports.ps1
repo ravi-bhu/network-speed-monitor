@@ -47,9 +47,6 @@ if ($SelfTest) {
     if ($bad.Count -gt 0) { Write-Host "SELF-TEST OK: forbidden import detected as expected ($($bad -join ', '))."; exit 0 }
     Fail "SELF-TEST FAILED: $Exe was expected to import a forbidden DLL but none was detected."
 }
-if ($bad.Count -gt 0) {
-    Fail "FAIL: $Exe imports forbidden networking DLL(s): $($bad -join ', ')"
-    exit 1
-}
+if ($bad.Count -gt 0) { Fail "FAIL: $Exe imports forbidden networking DLL(s): $($bad -join ', ')" }
 Write-Host "OK: no networking DLL imported."
 exit 0
