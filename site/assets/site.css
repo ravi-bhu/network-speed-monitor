@@ -363,7 +363,8 @@ main.home { padding-block: 0; }
 .r-page[hidden] { display: block; visibility: hidden; }
 .r-page:focus-visible { outline: 2px solid var(--r-accent); outline-offset: 2px; }
 .r-cards, .r-panels { display: grid; grid-template-columns: repeat(var(--r-cols, 4), minmax(0, 1fr)); gap: 1em; }
-.r-panels { --r-cols: 3; margin-top: 1.333em; }
+.r-panels, .r-cards.r-three { --r-cols: 3; }
+.r-panels { margin-top: 1.333em; }
 .r-card, .r-panel { background: var(--r-surface); border: 1px solid var(--r-border); border-radius: .5em; padding: 1em; min-width: 0; }
 .r-card { display: grid; gap: .333em; }
 .r-card.is-on { border: 2px solid var(--r-accent); padding: calc(1em - 1px); }
@@ -519,7 +520,7 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; overflow
   .stage-controls { margin: .75rem 0 0 clamp(1rem, 4vw, 2.5rem); }
   .tb-search, .tb-hide-narrow, .win11 .tb-hide-narrow { display: none; }
   .note { font-size: .875rem; }
-  .r-cards { --r-cols: 2; }
+  .r-cards, .r-cards.r-three { --r-cols: 2; }
   .r-panels { --r-cols: 1; }
   .r-range { display: none; }
   .report-window { font-size: 12px; }

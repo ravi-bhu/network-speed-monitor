@@ -209,6 +209,15 @@ std::wstring DefaultCsvName(LocalDate today) {
     return buf;
 }
 
+int FixedSummaryCard(Period p) {
+    switch (p) {
+        case Period::Today: return 0;
+        case Period::ThisWeek: return 1;
+        case Period::ThisMonth: return 2;
+        default: return -1;
+    }
+}
+
 std::wstring FillPlaceholders(const std::wstring& format, std::initializer_list<std::wstring> args) {
     std::wstring out;
     out.reserve(format.size());
@@ -601,9 +610,11 @@ void ReportWindow::Refresh() {
     }
     if (!store_.Healthy()) view.notices.push_back(LoadStr(IDS_NOTE_UNHEALTHY));
     const std::wstring periodName = periodIndex_ == kCustomPeriod ? rangeText : LoadStr(kPeriods[periodIndex_].name);
-    view.cards = {card(LoadStr(IDS_PERIOD_TODAY), s.today, false),
-                  card(LoadStr(IDS_PERIOD_THIS_WEEK), s.thisWeek, false),
-                  card(LoadStr(IDS_PERIOD_THIS_MONTH), s.thisMonth, false), card(periodName, s.period, true)};
+    const int fixed = FixedSummaryCard(kPeriods[periodIndex_].period);
+    view.cards = {card(LoadStr(IDS_PERIOD_TODAY), s.today, fixed == 0),
+                  card(LoadStr(IDS_PERIOD_THIS_WEEK), s.thisWeek, fixed == 1),
+                  card(LoadStr(IDS_PERIOD_THIS_MONTH), s.thisMonth, fixed == 2)};
+    if (fixed < 0) view.cards.push_back(card(periodName, s.period, true));
     SummaryPanel busiest{LoadStr(IDS_BUSIEST_DAY), {}, none};
     if (s.busiestDay && s.busiestDay->second.Total() > 0) {
         busiest.rows.push_back({LongDate(s.busiestDay->first), FormatVolume(s.busiestDay->second.Total())});
