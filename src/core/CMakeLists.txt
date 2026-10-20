@@ -8,5 +8,6 @@ add_library(nsm_core STATIC
   time_zone.cpp
   periods.cpp
   usage_accumulator.cpp
+  utf8.cpp
 )
 target_include_directories(nsm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)

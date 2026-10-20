@@ -7,6 +7,7 @@
 #include <tuple>
 
 #include "core/periods.h"
+#include "core/utf8.h"
 #include "sqlite3.h"
 
 namespace nsm {
@@ -14,14 +15,6 @@ namespace nsm {
 namespace {
 
 constexpr int64_t kRollUpAgeSeconds = 90LL * 86400;
-
-std::string ToUtf8(const std::wstring& w) {
-    if (w.empty()) return {};
-    const int n = WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), nullptr, 0, nullptr, nullptr);
-    std::string s(static_cast<size_t>(n), '\0');
-    WideCharToMultiByte(CP_UTF8, 0, w.data(), static_cast<int>(w.size()), s.data(), n, nullptr, nullptr);
-    return s;
-}
 
 // len is in bytes; the text may contain NULs.
 std::wstring FromUtf8(const char* s, int len) {

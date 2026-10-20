@@ -91,6 +91,7 @@ BEGIN
     IDS_RANGE_TITLE "Custom range"
     IDS_RANGE_FROM "&From:"
     IDS_RANGE_TO "&To:"
+    IDS_EXPORT_READ_FAILED "Your usage history couldn't be read, so nothing was exported. Close and reopen the app, then try again."
 
     IDS_SET_TITLE "Settings – Network Speed Monitor"
     IDS_SET_AUTOSTART "&Start with Windows"
