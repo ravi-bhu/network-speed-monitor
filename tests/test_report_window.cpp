@@ -8,10 +8,12 @@
 #include <filesystem>
 #include <random>
 #include <span>
+#include <utility>
 #include <vector>
 
 #include "core/periods.h"
 #include "platform/strings.h"
+#include "platform/theme.h"
 #include "resource.h"
 #include "ui/dialogs.h"
 #include "ui/report_window.h"
@@ -208,16 +210,74 @@ TEST_CASE("AxisLabels: months add the year on the first bar and in January once 
     CHECK(span == std::vector<std::wstring>{L"Nov 2025", L"Dec", L"Jan 2026", L"Feb"});
 }
 
+TEST_CASE("AxisLabels' date pictures come from the STRINGTABLE, so a translation can reorder them") {
+    CHECK(LoadStr(IDS_AXIS_WEEKDAY) == L"ddd d");
+    CHECK(LoadStr(IDS_AXIS_MONTH_DAY) == L"MMM d");
+    CHECK(LoadStr(IDS_AXIS_DAY) == L"d");
+    CHECK(LoadStr(IDS_AXIS_MONTH_YEAR) == L"MMM yyyy");
+    CHECK(LoadStr(IDS_AXIS_MONTH) == L"MMM");
+}
+
+namespace {
+TimelineBar Bar(LocalDateTime start, int64_t lengthSec = 0) { return TimelineBar{start, {}, lengthSec}; }
+}  // namespace
+
 TEST_CASE("BarTitle names the hour, day or month a bar covers") {
-    CHECK(BarTitle(LocalDateTime{2026, 10, 19, 14, 0, 0}, Granularity::Hour, L"en-US") ==
+    CHECK(BarTitle(Bar({2026, 10, 19, 14, 0, 0}, 3600), Granularity::Hour, L"en-US") ==
           L"Monday, October 19, 2026, 2:00 PM – 3:00 PM");
-    CHECK(BarTitle(LocalDateTime{2026, 10, 19, 23, 0, 0}, Granularity::Hour, L"en-US") ==
+    CHECK(BarTitle(Bar({2026, 10, 19, 23, 0, 0}, 3600), Granularity::Hour, L"en-US") ==
           L"Monday, October 19, 2026, 11:00 PM – 12:00 AM");
-    // A short bucket after a part-hour transition ends on the next full hour.
-    CHECK(BarTitle(LocalDateTime{2026, 10, 4, 2, 30, 0}, Granularity::Hour, L"en-US") ==
+    // A short bucket after a part-hour transition (Lord Howe: 02:00 -> 02:30) ends on the next full hour.
+    CHECK(BarTitle(Bar({2026, 10, 4, 2, 30, 0}, 1800), Granularity::Hour, L"en-US") ==
           L"Sunday, October 4, 2026, 2:30 AM – 3:00 AM");
-    CHECK(BarTitle(LocalDateTime{2026, 10, 19, 0, 0, 0}, Granularity::Day, L"en-US") == L"Monday, October 19, 2026");
-    CHECK(BarTitle(LocalDateTime{2026, 10, 1, 0, 0, 0}, Granularity::Month, L"en-US") == L"October 2026");
+    // Without a length, the next full hour.
+    CHECK(BarTitle(Bar({2026, 10, 4, 2, 30, 0}), Granularity::Hour, L"en-US") ==
+          L"Sunday, October 4, 2026, 2:30 AM – 3:00 AM");
+    CHECK(BarTitle(Bar({2026, 10, 19, 0, 0, 0}), Granularity::Day, L"en-US") == L"Monday, October 19, 2026");
+    CHECK(BarTitle(Bar({2026, 10, 1, 0, 0, 0}), Granularity::Month, L"en-US") == L"October 2026");
+}
+
+TEST_CASE("BarTitle ends the hour cut short by Chatham's 02:45 DST change at 02:45") {
+    // 2026-09-27 02:45 CHAST -> 03:45 CHADT: the 02:00 bucket lasts 45 minutes, the 03:45 one 15.
+    CHECK(BarTitle(Bar({2026, 9, 27, 2, 0, 0}, 2700), Granularity::Hour, L"en-US") ==
+          L"Sunday, September 27, 2026, 2:00 AM – 2:45 AM");
+    CHECK(BarTitle(Bar({2026, 9, 27, 3, 45, 0}, 900), Granularity::Hour, L"en-US") ==
+          L"Sunday, September 27, 2026, 3:45 AM – 4:00 AM");
+    // A bucket that ends at a fall-back change (03:45 CHADT -> 02:45 CHAST) ends on the clock it started on.
+    CHECK(BarTitle(Bar({2027, 4, 4, 3, 0, 0}, 2700), Granularity::Hour, L"en-US") ==
+          L"Sunday, April 4, 2027, 3:00 AM – 3:45 AM");
+}
+
+TEST_CASE("SummaryNotices shows the unhealthy banner exactly when the store isn't healthy") {
+    CHECK(SummaryNotices({}, true).empty());
+    CHECK(SummaryNotices({}, false) == std::vector<std::wstring>{LoadStr(IDS_NOTE_UNHEALTHY)});
+    const std::filesystem::path recovered = L"C:\\data\\usage.db.corrupt";
+    const auto both = SummaryNotices(recovered, false);
+    REQUIRE(both.size() == 2);
+    CHECK(both[0] == FillPlaceholders(LoadStr(IDS_NOTE_CORRUPT), {recovered.wstring()}));
+    CHECK(both[1] == LoadStr(IDS_NOTE_UNHEALTHY));
+    CHECK(SummaryNotices(recovered, true).size() == 1);
+}
+
+TEST_CASE("SetDarkTitleBar falls back to attribute 19 on Windows 10 1809-1909") {
+    std::vector<std::pair<DWORD, BOOL>> calls;
+    auto setter = [&](HRESULT result20, HRESULT result19) {
+        return [&calls, result20, result19](HWND, DWORD attribute, const void* value, DWORD size) {
+            REQUIRE(size == sizeof(BOOL));
+            calls.emplace_back(attribute, *static_cast<const BOOL*>(value));
+            return attribute == 20 ? result20 : result19;
+        };
+    };
+    CHECK(SetDarkTitleBar(nullptr, true, setter(S_OK, E_INVALIDARG)));  // 20H1 and later: 20 only
+    CHECK(calls == std::vector<std::pair<DWORD, BOOL>>{{20, TRUE}});
+    calls.clear();
+    CHECK(SetDarkTitleBar(nullptr, true, setter(E_INVALIDARG, S_OK)));  // 1809-1909: 20 is refused
+    CHECK(calls == std::vector<std::pair<DWORD, BOOL>>{{20, TRUE}, {19, TRUE}});
+    calls.clear();
+    CHECK(SetDarkTitleBar(nullptr, false, setter(E_INVALIDARG, S_OK)));  // switching back to light
+    CHECK(calls == std::vector<std::pair<DWORD, BOOL>>{{20, FALSE}, {19, FALSE}});
+    calls.clear();
+    CHECK_FALSE(SetDarkTitleBar(nullptr, true, setter(E_INVALIDARG, E_INVALIDARG)));  // before 1809
 }
 
 TEST_CASE("TrimName drops surrounding whitespace so a blank rename restores the Windows name") {
@@ -282,8 +342,100 @@ TEST_CASE("IST: Today's timeline labels start at 12 AM" * doctest::test_suite("i
     const auto labels = AxisLabels(bars, Granularity::Hour, L"en-US");
     CHECK(labels.front() == L"12 AM");
     CHECK(labels.back() == L"11 PM");
-    CHECK(BarTitle(bars.front().start, Granularity::Hour, L"en-US") == L"Monday, October 19, 2026, 12:00 AM – 1:00 AM");
+    CHECK(BarTitle(bars.front(), Granularity::Hour, L"en-US") == L"Monday, October 19, 2026, 12:00 AM – 1:00 AM");
     CHECK(bars.front().totals.Total() == 10);
+}
+
+namespace {
+
+// The id of the menu item labelled with the string `textId`; 0 if there is none.
+UINT MenuCommand(HMENU menu, UINT textId) {
+    const std::wstring want = LoadStr(textId);
+    for (int i = 0; i < GetMenuItemCount(menu); ++i) {
+        wchar_t text[128] = {};
+        GetMenuStringW(menu, static_cast<UINT>(i), text, static_cast<int>(std::size(text)), MF_BYPOSITION);
+        if (!want.empty() && want == text) return GetMenuItemID(menu, i);
+    }
+    return 0;
+}
+
+// Opens the context menu of a table's first row, the way Shift+F10 does.
+void OpenFirstRowMenu(HWND report, HWND list) {
+    ListView_SetItemState(list, 0, LVIS_SELECTED | LVIS_FOCUSED, LVIS_SELECTED | LVIS_FOCUSED);
+    SendMessageW(report, WM_CONTEXTMENU, reinterpret_cast<WPARAM>(list), static_cast<LPARAM>(-1));
+}
+
+// Picks a period as a click in the open list does. The report handles it from a posted message.
+void PickPeriod(HWND report, HWND combo, int index) {
+    SendMessageW(combo, CB_SETCURSEL, static_cast<WPARAM>(index), 0);
+    SendMessageW(report, WM_COMMAND, MAKEWPARAM(GetDlgCtrlID(combo), CBN_SELENDOK), reinterpret_cast<LPARAM>(combo));
+    MSG msg;
+    while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+        TranslateMessage(&msg);
+        DispatchMessageW(&msg);
+    }
+}
+
+}  // namespace
+
+TEST_CASE("ReportWindow tells the app about renames and hiding, and rebuilds its tables for a new period" *
+          doctest::test_suite("integration")) {
+    TempStore t;
+    t.store.UpsertAdapter(L"{A}", L"Wi-Fi", AdapterKind::WiFi);
+    t.store.UpsertAdapter(L"{B}", L"Ethernet", AdapterKind::Ethernet);
+    t.store.UpsertNetwork(NetworkMeta{L"{N1}", L"Home"});
+    t.Add(L"{A}", L"{N1}", 5'000'000, 0);
+    t.Add(L"{B}", L"", 2'000'000, 0);
+
+    {
+        ReportWindow w(GetModuleHandleW(nullptr), t.store);
+        w.SetThemeOverride(ReportTheme::Light);
+        int changes = 0;
+        w.onAdaptersChanged = [&] { ++changes; };
+        UINT pick = 0;  // the string id of the row-menu item to choose
+        w.pickRowCommand = [&](HMENU menu) { return MenuCommand(menu, pick); };
+        std::optional<std::wstring> newName;  // what the Rename dialog returns
+        w.askNewName = [&](const std::wstring&) { return newName; };
+
+        w.Show(2);
+        REQUIRE(w.IsOpen());
+        HWND hwnd = FindWindowW(L"NetworkSpeedMonitor.Report", nullptr);
+        REQUIRE(hwnd);
+        HWND adapters = FindChild(hwnd, WC_LISTVIEWW, 0);
+        HWND wifi = FindChild(hwnd, WC_LISTVIEWW, 1);
+        HWND period = FindChild(hwnd, WC_COMBOBOXW);
+        REQUIRE(adapters);
+        REQUIRE(wifi);
+        REQUIRE(period);
+        REQUIRE(ListView_GetItemCount(adapters) == 2);
+        REQUIRE(ItemText(adapters, 0) == L"Wi-Fi");
+
+        pick = IDS_MENU_RENAME;
+        newName = L"Laptop Wi-Fi";
+        OpenFirstRowMenu(hwnd, adapters);
+        CHECK(changes == 1);
+        CHECK(ItemText(adapters, 0) == L"Laptop Wi-Fi");
+        newName.reset();  // cancelled: nothing is stored, so there is nothing to tell
+        OpenFirstRowMenu(hwnd, adapters);
+        CHECK(changes == 1);
+
+        pick = IDS_MENU_HIDE;
+        OpenFirstRowMenu(hwnd, adapters);
+        CHECK(changes == 2);
+        CHECK(ListView_GetItemCount(adapters) == 1);
+        CHECK(ItemText(adapters, 0) == L"Ethernet");
+
+        // All the traffic is from this hour: none yesterday, all of it today. Hidden adapters still count
+        // in the Wi-Fi networks table.
+        PickPeriod(hwnd, period, 1);  // Yesterday
+        CHECK(ListView_GetItemCount(adapters) == 0);
+        CHECK(ListView_GetItemCount(wifi) == 0);
+        PickPeriod(hwnd, period, 0);  // Today
+        CHECK(ListView_GetItemCount(adapters) == 1);
+        CHECK(ListView_GetItemCount(wifi) == 1);
+        CHECK(changes == 2);
+        w.Close();
+    }
 }
 
 TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting, and reopens where it closed" *

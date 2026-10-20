@@ -12,4 +12,19 @@ std::wstring LoadStr(UINT id) {
     return std::wstring(text, static_cast<size_t>(len));
 }
 
+std::wstring FillPlaceholders(const std::wstring& format, std::initializer_list<std::wstring> args) {
+    std::wstring out;
+    out.reserve(format.size());
+    auto next = args.begin();
+    for (size_t i = 0; i < format.size(); ++i) {
+        if (format[i] == L'%' && i + 1 < format.size() && format[i + 1] == L's') {
+            if (next != args.end()) out += *next++;
+            ++i;
+        } else {
+            out += format[i];
+        }
+    }
+    return out;
+}
+
 }  // namespace nsm

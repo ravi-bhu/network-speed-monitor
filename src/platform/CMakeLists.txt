@@ -9,4 +9,4 @@ add_library(nsm_platform STATIC
   autostart.cpp
 )
 target_include_directories(nsm_platform PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/..)
-target_link_libraries(nsm_platform PUBLIC iphlpapi ole32 oleaut32 uuid shell32 advapi32)
+target_link_libraries(nsm_platform PUBLIC iphlpapi ole32 oleaut32 uuid shell32 advapi32 dwmapi)

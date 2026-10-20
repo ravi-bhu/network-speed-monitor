@@ -97,6 +97,10 @@ TEST_CASE("Timeline keeps the short hour after Chatham's 2:45 DST change" * doct
     CHECK(bars[3].totals.Total() == 42);
     CHECK(bars[4].start.hour == 4);  CHECK(bars[4].start.minute == 0);
     CHECK(bars[23].start.hour == 23);
+    CHECK(bars[1].lengthSec == 3600);
+    CHECK(bars[2].lengthSec == 45 * 60);   // so its tooltip ends at 02:45
+    CHECK(bars[3].lengthSec == 15 * 60);
+    CHECK(bars[4].lengthSec == 3600);
 }
 
 TEST_CASE("Summary uses internet series only" * doctest::test_suite("integration")) {

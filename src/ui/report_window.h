@@ -7,7 +7,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <functional>
-#include <initializer_list>
 #include <memory>
 #include <optional>
 #include <string>
@@ -17,6 +16,7 @@
 #include "core/time_zone.h"
 #include "report/report_model.h"
 #include "storage/usage_store.h"
+#include "ui/report_format.h"
 #include "ui/report_paint.h"
 
 namespace nsm {
@@ -50,6 +50,10 @@ public:
     // maximized (or minimized from maximized).
     std::function<void(RECT, bool)> onBoundsChanged;
     std::function<void()> onAdaptersChanged;    // a rename or hide/unhide was stored
+    // Tests only: stand-ins for a table row's context menu (returns the chosen item's id, 0 = none) and for the
+    // Rename dialog (returns the new name, nullopt = cancelled), which can't be shown in a test run.
+    std::function<UINT(HMENU)> pickRowCommand;
+    std::function<std::optional<std::wstring>(const std::wstring& current)> askNewName;
 
 private:
     struct TableState;
@@ -139,40 +143,12 @@ RECT WorkspaceToScreen(RECT r, const RECT& monitor, const RECT& work);
 // 64-bit Windows the lParam is 0xFFFFFFFF.
 bool IsKeyboardContextMenu(LPARAM lp);
 
-enum class TableColumn { Name, Type, Received, Sent, Total };
-struct TableSort {
-    TableColumn column = TableColumn::Total;
-    bool ascending = false;
-};
-// Clicking the sorted column flips its direction; another column starts A–Z for text, largest first for numbers.
-TableSort NextSort(TableSort current, TableColumn clicked);
-
-struct TableRow {
-    NamedTotals data;
-    std::wstring name;  // as displayed
-    std::wstring type;  // as displayed
-};
-// Ties fall back to the larger total, then the name, then the id.
-void SortRows(std::vector<TableRow>& rows, TableSort sort);
-
-std::wstring DefaultCsvName(LocalDate today);  // network-usage-YYYY-MM-DD.csv
-
 // The Summary always shows cards for Today, This week and This month (0, 1, 2). When the picked period is one
 // of them its card is highlighted instead of adding a period card that repeats it; otherwise -1.
 int FixedSummaryCard(Period p);
 
-// Replaces each "%s" in `format` with the next argument (missing ones with nothing); inserted text is not rescanned.
-std::wstring FillPlaceholders(const std::wstring& format, std::initializer_list<std::wstring> args);
-
-// Locale formatting. `locale` nullptr = the user's locale with their overrides; a locale name uses that
-// locale's defaults (tests).
-std::wstring RangeLabel(LocalDate first, LocalDate last, const wchar_t* locale = nullptr);
-// One x-axis label per bar: hours (with minutes when bars start off the hour, as in UTC+5:30), days (weekday
-// for a week or less; the month on the first bar and on the 1st), or months (with the year on the first bar
-// and in January when the bars span more than one year).
-std::vector<std::wstring> AxisLabels(const std::vector<TimelineBar>& bars, Granularity g,
-                                     const wchar_t* locale = nullptr);
-std::wstring BarTitle(const LocalDateTime& start, Granularity g, const wchar_t* locale = nullptr);
-std::wstring LongDate(LocalDate d, const wchar_t* locale = nullptr);
+// The Summary tab's banners: the database was unreadable and moved to `recoveredFile` (empty = it wasn't), and
+// the store failed a read or write since it last succeeded (!storeHealthy).
+std::vector<std::wstring> SummaryNotices(const std::filesystem::path& recoveredFile, bool storeHealthy);
 
 }  // namespace nsm

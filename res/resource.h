@@ -100,6 +100,14 @@
 #define IDS_RANGE_TO 272
 #define IDS_EXPORT_READ_FAILED 273  // the store is unhealthy, so the export wrote nothing
 
+// Timeline axis labels: GetDateFormatEx pictures (d = day, ddd = weekday, MMM = month, yyyy = year), so a
+// translation can put the day and month in its own order
+#define IDS_AXIS_WEEKDAY 274     // "ddd d": a day bar when the timeline shows a week or less
+#define IDS_AXIS_MONTH_DAY 275   // "MMM d": the first day bar, and the 1st of a month
+#define IDS_AXIS_DAY 276         // "d": the other day bars
+#define IDS_AXIS_MONTH_YEAR 277  // "MMM yyyy": the first month bar, and January, when bars span two years
+#define IDS_AXIS_MONTH 278       // "MMM": the other month bars
+
 // Settings dialog (Task 16)
 #define IDS_SET_TITLE 280
 #define IDS_SET_AUTOSTART 281

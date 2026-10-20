@@ -1,7 +1,6 @@
 #include "ui/dialogs.h"
 
 #include <commctrl.h>
-#include <dwmapi.h>
 #include <shellapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
@@ -14,16 +13,15 @@
 #include "nsm_version.h"
 #include "platform/paths.h"
 #include "platform/strings.h"
+#include "platform/theme.h"
 #include "resource.h"
 #include "ui/report_paint.h"
-#include "ui/report_window.h"
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 namespace nsm {
 namespace {
 
-constexpr DWORD kDwmUseImmersiveDarkMode = 20;  // DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1+)
 constexpr int kDeleteButton = 100;
 
 HINSTANCE Module() { return reinterpret_cast<HINSTANCE>(&__ImageBase); }
@@ -36,8 +34,7 @@ struct DialogTheme {
 
     void Apply(HWND dlg) {
         if (!dark) return;
-        BOOL on = TRUE;
-        DwmSetWindowAttribute(dlg, kDwmUseImmersiveDarkMode, &on, sizeof(on));
+        SetDarkTitleBar(dlg, true);
         brush = CreateSolidBrush(palette.background);
         EnumChildWindows(
             dlg,

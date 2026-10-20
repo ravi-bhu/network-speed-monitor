@@ -7,6 +7,7 @@ add_library(nsm_ui STATIC
   overlay_manager.cpp
   app.cpp
   report_paint.cpp
+  report_format.cpp
   report_window.cpp
   dialogs.cpp
 )
