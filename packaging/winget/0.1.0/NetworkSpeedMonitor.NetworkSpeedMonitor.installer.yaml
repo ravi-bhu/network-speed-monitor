@@ -9,6 +9,10 @@ InstallModes:
 - silentWithProgress
 UpgradeBehavior: install
 ReleaseDate: {{RELEASE_DATE}}
+# The installer's Apps and Features (uninstall) key: Inno's AppId (installer/NetworkSpeedMonitor.iss) plus
+# "_is1". Both architectures share it. Quoted, because a bare leading { is YAML flow-mapping syntax.
+AppsAndFeaturesEntries:
+- ProductCode: '{A5C137BB-8BC5-49E5-A9AE-ABE0DCCB2EDF}_is1'
 Installers:
 - Architecture: x64
   InstallerUrl: {{X64_URL}}

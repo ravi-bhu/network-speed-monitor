@@ -22,6 +22,8 @@
 ; AppId identifies this product to Windows and to winget. It was generated once and MUST NEVER CHANGE,
 ; or upgrades would install side by side and the old copy could not be uninstalled.
 ; (The doubled opening brace is Inno's escape for a literal brace.)
+; Its uninstall key is "{A5C137BB-8BC5-49E5-A9AE-ABE0DCCB2EDF}_is1", the ProductCode in the winget installer manifest
+; (packaging/winget).
 AppId={{A5C137BB-8BC5-49E5-A9AE-ABE0DCCB2EDF}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
