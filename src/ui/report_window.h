@@ -41,11 +41,14 @@ public:
     bool PreTranslateMessage(MSG& msg);
 
     void SetCorruptionNotice(std::filesystem::path recoveredFile);
-    void SetSavedRect(std::optional<RECT> rect);  // where the next Show creates the window
+    // Where the next Show creates the window (its restored bounds), and whether it opens maximized.
+    void SetSavedRect(std::optional<RECT> rect, bool maximized = false);
     void SetThemeOverride(std::optional<ReportTheme> theme);  // development runs only
 
     std::function<void()> beforeQuery;          // App::FlushNow
-    std::function<void(RECT)> onBoundsChanged;  // the window was moved or resized (screen px)
+    // The window was moved, resized or closed maximized: its restored bounds (screen px) and whether it is
+    // maximized (or minimized from maximized).
+    std::function<void(RECT, bool)> onBoundsChanged;
     std::function<void()> onAdaptersChanged;    // a rename or hide/unhide was stored
 
 private:
@@ -80,7 +83,6 @@ private:
 
     void PaintCanvas(HWND canvas, HDC dc);
     void PaintTabs(HWND tabs);
-    LRESULT DrawDarkCheckbox(NMCUSTOMDRAW* cd);
     void SetHot(int index, bool fromKeyboard);
     std::wstring BarTip(int index) const;
     ReportTheme CurrentTheme() const;
@@ -120,6 +122,8 @@ private:
     bool showHiddenRows_ = false;
 
     std::optional<RECT> savedRect_;
+    bool savedMaximized_ = false;
+    bool repaintAfterRecreate_ = false;  // a canvas lost its render target and asked for one more paint
     std::filesystem::path corruptFile_;
 };
 
@@ -128,6 +132,12 @@ private:
 // Where the report window opens: the saved rect moved inside `work` (shrunk to fit, grown to
 // `minSize` when smaller), or `defaultSize` centred in `work` when nothing was saved. Screen pixels.
 RECT FitReportRect(const std::optional<RECT>& saved, const RECT& work, SIZE defaultSize, SIZE minSize);
+// GetWindowPlacement's rcNormalPosition is in workspace coordinates, whose (0, 0) is the corner of the work
+// area of the window's monitor: shifted from screen coordinates when a taskbar is on the left or top edge.
+RECT WorkspaceToScreen(RECT r, const RECT& monitor, const RECT& work);
+// WM_CONTEXTMENU from the keyboard (Shift+F10 or the menu key) has the point (-1, -1). Not lParam == -1: on
+// 64-bit Windows the lParam is 0xFFFFFFFF.
+bool IsKeyboardContextMenu(LPARAM lp);
 
 enum class TableColumn { Name, Type, Received, Sent, Total };
 struct TableSort {
@@ -146,6 +156,10 @@ struct TableRow {
 void SortRows(std::vector<TableRow>& rows, TableSort sort);
 
 std::wstring DefaultCsvName(LocalDate today);  // network-usage-YYYY-MM-DD.csv
+
+// The Summary always shows cards for Today, This week and This month (0, 1, 2). When the picked period is one
+// of them its card is highlighted instead of adding a period card that repeats it; otherwise -1.
+int FixedSummaryCard(Period p);
 
 // Replaces each "%s" in `format` with the next argument (missing ones with nothing); inserted text is not rescanned.
 std::wstring FillPlaceholders(const std::wstring& format, std::initializer_list<std::wstring> args);

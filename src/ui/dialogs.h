@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <commctrl.h>
 
 #include <filesystem>
 #include <optional>
@@ -12,6 +13,8 @@
 
 namespace nsm {
 
+struct ReportPalette;
+
 // Modal dialogs of the report window. `dark` gives them a dark title bar and dark surfaces.
 
 // The new friendly name (trimmed; empty = use the Windows name), or nullopt if cancelled.
@@ -22,6 +25,10 @@ std::optional<std::pair<LocalDate, LocalDate>> CustomRangeDialog(HWND owner, Loc
 // A "Delete"/"Cancel" task dialog with Cancel as the default. True if the user chose Delete.
 bool ConfirmDelete(HWND owner, const std::wstring& message);
 void ShowError(HWND owner, const std::wstring& message);
+
+// Dark check boxes and radio buttons, drawn from a Button's NM_CUSTOMDRAW on `background` (the Settings dialog
+// and the report's "Show hidden adapters" box). Push buttons and later draw stages get CDRF_DODEFAULT.
+LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const ReportPalette& palette, HBRUSH background);
 
 std::wstring TrimName(const std::wstring& name);
 
@@ -58,8 +65,11 @@ struct SettingsDialogOptions {
     bool openAdapters = false;
 };
 
-// Modal. True = OK: `s` holds the new settings (not yet applied or saved). Cancel and Esc leave `s` untouched.
-bool ShowSettingsDialog(HWND owner, Settings& s, const std::vector<AdapterChoice>& adapters,
-                        SettingsDialogOptions* options = nullptr);
+// Modal; the controls start from `s`, and `choices` (from SettingsAdapterChoices) fills the adapter list. Returns
+// what the controls hold on OK, or nullopt for Cancel and Esc. Settings can change while the dialog is open (the
+// report window's rectangle), so apply the result with ApplyDialogState onto the settings as they are then.
+std::optional<SettingsDialogState> ShowSettingsDialog(HWND owner, const Settings& s,
+                                                      const std::vector<AdapterChoice>& choices,
+                                                      SettingsDialogOptions* options = nullptr);
 
 }  // namespace nsm

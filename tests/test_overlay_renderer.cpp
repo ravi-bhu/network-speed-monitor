@@ -118,7 +118,7 @@ TEST_CASE("RenderOverlay draws a clickable background, text and graph" * doctest
     for (int i = 0; i < 60; ++i) history.Push({1e6 * (1 + std::sin(i * 0.3)), 2e5 * (1 + std::cos(i * 0.2))});
     const OverlayContent c{Speed{1.24e6, 15.8e6}, UnitMode::Bytes, false, true, &history, false, 96};
     OverlayBrushes brushes;
-    RenderOverlay(rt, brushes, size, c);
+    CHECK(SUCCEEDED(RenderOverlay(rt, brushes, size, c)));
     GdiFlush();
 
     int transparent = 0, opaque = 0, colouredGraph = 0;

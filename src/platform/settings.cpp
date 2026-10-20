@@ -89,6 +89,7 @@ Settings LoadSettings(const std::filesystem::path& ini) {
     auto l = ReadLong(L"Left", path), t = ReadLong(L"Top", path), r = ReadLong(L"Right", path),
          b = ReadLong(L"Bottom", path);
     if (l && t && r && b && *r > *l && *b > *t) s.reportRect = RECT{*l, *t, *r, *b};
+    s.reportMaximized = ReadString(kReport, L"Maximized", path) == L"1";
     return s;
 }
 
@@ -103,14 +104,15 @@ bool SaveSettings(const std::filesystem::path& ini, const Settings& s) {
     AppendKey(text, L"ShowGraph", s.showGraph ? L"1" : L"0");
     AppendKey(text, L"Letters", s.letters ? L"1" : L"0");
     AppendKey(text, L"AllTaskbars", s.allTaskbars ? L"1" : L"0");
+    if (s.reportRect || s.reportMaximized) text += L"[ReportWindow]\r\n";
     if (s.reportRect) {
         const RECT& r = *s.reportRect;
-        text += L"[ReportWindow]\r\n";
         AppendKey(text, L"Left", std::to_wstring(r.left));
         AppendKey(text, L"Top", std::to_wstring(r.top));
         AppendKey(text, L"Right", std::to_wstring(r.right));
         AppendKey(text, L"Bottom", std::to_wstring(r.bottom));
     }
+    if (s.reportMaximized) AppendKey(text, L"Maximized", L"1");
 
     std::wstring tmpPath;
     HANDLE h = CreateTempFile(ini, tmpPath);

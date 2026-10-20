@@ -179,6 +179,13 @@ RECT FitReportRect(const std::optional<RECT>& saved, const RECT& work, SIZE defa
     return RECT{left, top, left + w, top + h};
 }
 
+RECT WorkspaceToScreen(RECT r, const RECT& monitor, const RECT& work) {
+    OffsetRect(&r, work.left - monitor.left, work.top - monitor.top);
+    return r;
+}
+
+bool IsKeyboardContextMenu(LPARAM lp) { return GET_X_LPARAM(lp) == -1 && GET_Y_LPARAM(lp) == -1; }
+
 TableSort NextSort(TableSort current, TableColumn clicked) {
     if (current.column == clicked) return TableSort{clicked, !current.ascending};
     return TableSort{clicked, !IsNumeric(clicked)};
@@ -207,6 +214,15 @@ std::wstring DefaultCsvName(LocalDate today) {
     wchar_t buf[64];
     swprintf(buf, std::size(buf), L"network-usage-%04d-%02d-%02d.csv", today.year, today.month, today.day);
     return buf;
+}
+
+int FixedSummaryCard(Period p) {
+    switch (p) {
+        case Period::Today: return 0;
+        case Period::ThisWeek: return 1;
+        case Period::ThisMonth: return 2;
+        default: return -1;
+    }
 }
 
 std::wstring FillPlaceholders(const std::wstring& format, std::initializer_list<std::wstring> args) {
@@ -299,16 +315,21 @@ void ReportWindow::Close() {
 
 void ReportWindow::SetCorruptionNotice(std::filesystem::path recoveredFile) { corruptFile_ = std::move(recoveredFile); }
 
-void ReportWindow::SetSavedRect(std::optional<RECT> rect) { savedRect_ = rect; }
+void ReportWindow::SetSavedRect(std::optional<RECT> rect, bool maximized) {
+    savedRect_ = rect;
+    savedMaximized_ = maximized;
+}
 
 void ReportWindow::SetThemeOverride(std::optional<ReportTheme> theme) { themeOverride_ = theme; }
 
 int ReportWindow::Scale(int dips) const { return MulDiv(dips, static_cast<int>(dpi_), 96); }
 
 void ReportWindow::Show(int tab) {
-    if (!hwnd_ && !Create()) return;
+    const bool created = !hwnd_;
+    if (created && !Create()) return;
     SelectTab(std::clamp(tab, 0, kTabCount - 1));
-    ShowWindow(hwnd_, IsIconic(hwnd_) ? SW_RESTORE : SW_SHOW);
+    // A new window is created at its restored bounds, so restoring it from maximized goes back there.
+    ShowWindow(hwnd_, created && savedMaximized_ ? SW_SHOWMAXIMIZED : IsIconic(hwnd_) ? SW_RESTORE : SW_SHOW);
     SetForegroundWindow(hwnd_);
 }
 
@@ -559,12 +580,24 @@ bool ReportWindow::PreTranslateMessage(MSG& msg) {
 
 void ReportWindow::ReportBounds() {
     // Not IsWindowVisible: DestroyWindow hides the window before WM_DESTROY, where this runs last.
-    if (!hwnd_ || IsIconic(hwnd_) || IsZoomed(hwnd_)) return;
+    if (!hwnd_) return;
+    WINDOWPLACEMENT wp{sizeof(wp)};
+    if (!GetWindowPlacement(hwnd_, &wp)) return;
+    const bool iconic = IsIconic(hwnd_) != FALSE, zoomed = IsZoomed(hwnd_) != FALSE;
     RECT r;
-    if (!GetWindowRect(hwnd_, &r)) return;
-    if (savedRect_ && EqualRect(&*savedRect_, &r)) return;
+    if (iconic || zoomed) {
+        // Where it goes back to when restored.
+        MONITORINFO mi{sizeof(mi)};
+        if (!GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi)) return;
+        r = WorkspaceToScreen(wp.rcNormalPosition, mi.rcMonitor, mi.rcWork);
+    } else if (!GetWindowRect(hwnd_, &r)) {  // a snapped window: where it is, not where it was before the snap
+        return;
+    }
+    const bool maximized = zoomed || (iconic && (wp.flags & WPF_RESTORETOMAXIMIZED) != 0);
+    if (savedRect_ && EqualRect(&*savedRect_, &r) && savedMaximized_ == maximized) return;
     savedRect_ = r;
-    if (onBoundsChanged) onBoundsChanged(r);
+    savedMaximized_ = maximized;
+    if (onBoundsChanged) onBoundsChanged(r, maximized);
 }
 
 UtcRange ReportWindow::CurrentRange(int64_t nowUtc, const TimeZone& tz, int firstDayOfWeek) const {
@@ -601,9 +634,11 @@ void ReportWindow::Refresh() {
     }
     if (!store_.Healthy()) view.notices.push_back(LoadStr(IDS_NOTE_UNHEALTHY));
     const std::wstring periodName = periodIndex_ == kCustomPeriod ? rangeText : LoadStr(kPeriods[periodIndex_].name);
-    view.cards = {card(LoadStr(IDS_PERIOD_TODAY), s.today, false),
-                  card(LoadStr(IDS_PERIOD_THIS_WEEK), s.thisWeek, false),
-                  card(LoadStr(IDS_PERIOD_THIS_MONTH), s.thisMonth, false), card(periodName, s.period, true)};
+    const int fixed = FixedSummaryCard(kPeriods[periodIndex_].period);
+    view.cards = {card(LoadStr(IDS_PERIOD_TODAY), s.today, fixed == 0),
+                  card(LoadStr(IDS_PERIOD_THIS_WEEK), s.thisWeek, fixed == 1),
+                  card(LoadStr(IDS_PERIOD_THIS_MONTH), s.thisMonth, fixed == 2)};
+    if (fixed < 0) view.cards.push_back(card(periodName, s.period, true));
     SummaryPanel busiest{LoadStr(IDS_BUSIEST_DAY), {}, none};
     if (s.busiestDay && s.busiestDay->second.Total() > 0) {
         busiest.rows.push_back({LongDate(s.busiestDay->first), FormatVolume(s.busiestDay->second.Total())});
@@ -828,15 +863,27 @@ void ReportWindow::ExportCsvFile() {
 void ReportWindow::PaintCanvas(HWND canvas, HDC dc) {
     RECT rc;
     GetClientRect(canvas, &rc);
-    if (rc.right <= 0 || rc.bottom <= 0 || !painter_ || !d2d_) return;
+    if (rc.right <= 0 || rc.bottom <= 0) return;
+    // The canvas skips WM_ERASEBKGND, so a paint that fails would leave whatever was there: fill it with the
+    // background instead. A lost render target is created again at one more paint.
+    auto fail = [&](HRESULT hr) {
+        FillRect(dc, &rc, backgroundBrush_);
+        if (hr != static_cast<HRESULT>(D2DERR_RECREATE_TARGET)) return;  // unsigned in MinGW's headers
+        target_.Reset();
+        if (!repaintAfterRecreate_) {  // once: a target that is lost every time must not paint in a loop
+            repaintAfterRecreate_ = true;
+            InvalidateRect(canvas, nullptr, FALSE);
+        }
+    };
+    if (!painter_ || !d2d_) return fail(E_FAIL);
     if (!target_) {
         // Software rendering into the paint DC: no GPU driver is loaded for a few rectangles, so closing the
         // window frees it all, and WM_PRINTCLIENT works the same way as WM_PAINT.
         const auto props = D2D1::RenderTargetProperties(
             D2D1_RENDER_TARGET_TYPE_SOFTWARE, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE));
-        if (FAILED(d2d_->CreateDCRenderTarget(&props, &target_))) return;
+        if (const HRESULT hr = d2d_->CreateDCRenderTarget(&props, &target_); FAILED(hr)) return fail(hr);
     }
-    if (FAILED(target_->BindDC(dc, &rc))) return;
+    if (const HRESULT hr = target_->BindDC(dc, &rc); FAILED(hr)) return fail(hr);
     target_->SetDpi(static_cast<float>(dpi_), static_cast<float>(dpi_));
     const D2D1_SIZE_F size = target_->GetSize();
     target_->BeginDraw();
@@ -845,7 +892,8 @@ void ReportWindow::PaintCanvas(HWND canvas, HDC dc) {
     } else {
         timelineLayout_ = painter_->PaintTimeline(target_.Get(), size, timelineView_, palette_);
     }
-    if (target_->EndDraw() == D2DERR_RECREATE_TARGET) target_.Reset();
+    if (const HRESULT hr = target_->EndDraw(); FAILED(hr)) return fail(hr);
+    repaintAfterRecreate_ = false;
 }
 
 void ReportWindow::PaintTabs(HWND tabs) {
@@ -892,48 +940,6 @@ void ReportWindow::PaintTabs(HWND tabs) {
     DeleteObject(surface);
     DeleteObject(accent);
     EndPaint(tabs, &ps);
-}
-
-LRESULT ReportWindow::DrawDarkCheckbox(NMCUSTOMDRAW* cd) {
-    if (cd->dwDrawStage != CDDS_PREPAINT) return CDRF_DODEFAULT;
-    HDC dc = cd->hdc;
-    const RECT rc = cd->rc;
-    FillRect(dc, &rc, backgroundBrush_);
-    const bool checked = Button_GetCheck(showHiddenBox_) == BST_CHECKED;
-    int state = checked ? CBS_CHECKEDNORMAL : CBS_UNCHECKEDNORMAL;
-    if (cd->uItemState & CDIS_SELECTED) state += 2;  // pressed
-    else if (cd->uItemState & CDIS_HOT) state += 1;  // hot
-    HTHEME theme = OpenThemeDataForDpi(showHiddenBox_, L"Button", dpi_);
-    SIZE box{Scale(13), Scale(13)};
-    if (theme) GetThemePartSize(theme, dc, BP_CHECKBOX, state, nullptr, TS_DRAW, &box);
-    RECT boxRect{rc.left, rc.top + (rc.bottom - rc.top - box.cy) / 2, rc.left + box.cx, 0};
-    boxRect.bottom = boxRect.top + box.cy;
-    if (theme) {
-        DrawThemeBackground(theme, dc, BP_CHECKBOX, state, &boxRect, nullptr);
-        CloseThemeData(theme);
-    } else {
-        DrawFrameControl(dc, &boxRect, DFC_BUTTON, DFCS_BUTTONCHECK | (checked ? DFCS_CHECKED : 0u));
-    }
-    const LRESULT ui = SendMessageW(showHiddenBox_, WM_QUERYUISTATE, 0, 0);
-    const UINT format = DT_SINGLELINE | DT_VCENTER | DT_LEFT | ((ui & UISF_HIDEACCEL) ? DT_HIDEPREFIX : 0u);
-    const std::wstring label = LoadStr(IDS_SHOW_HIDDEN);
-    RECT text = rc;
-    text.left = boxRect.right + Scale(5);
-    HGDIOBJ old = SelectObject(dc, font_);
-    SetBkMode(dc, TRANSPARENT);
-    SetTextColor(dc, palette_.text);
-    DrawTextW(dc, label.c_str(), -1, &text, format);
-    if ((cd->uItemState & CDIS_FOCUS) && !(ui & UISF_HIDEFOCUS)) {
-        RECT focus = text;
-        DrawTextW(dc, label.c_str(), -1, &focus, format | DT_CALCRECT);
-        const int h = focus.bottom - focus.top;
-        focus.top = text.top + (text.bottom - text.top - h) / 2;
-        focus.bottom = focus.top + h;
-        InflateRect(&focus, 2, 1);
-        DrawFocusRect(dc, &focus);
-    }
-    SelectObject(dc, old);
-    return CDRF_SKIPDEFAULT;
 }
 
 std::wstring ReportWindow::BarTip(int index) const {
@@ -1112,7 +1118,8 @@ LRESULT ReportWindow::HandleNotify(NMHDR* nm) {
         return 0;
     }
     if (nm->hwndFrom == showHiddenBox_ && nm->code == NM_CUSTOMDRAW && theme_ == ReportTheme::Dark) {
-        return DrawDarkCheckbox(reinterpret_cast<NMCUSTOMDRAW*>(nm));
+        // Not the theme glyph: under the dark theme an unchecked box draws as a solid white square.
+        return DrawDarkToggle(reinterpret_cast<const NMCUSTOMDRAW*>(nm), palette_, backgroundBrush_);
     }
     for (TableState* t : {adapters_.get(), wifi_.get()}) {
         if (nm->hwndFrom != t->list || nm->code != LVN_COLUMNCLICK) continue;
@@ -1227,7 +1234,7 @@ LRESULT ReportWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             if (!t) break;
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
             int item = -1;
-            if (lp == -1) {  // keyboard: Shift+F10 or the menu key
+            if (IsKeyboardContextMenu(lp)) {  // Shift+F10 or the menu key
                 item = ListView_GetNextItem(src, -1, LVNI_SELECTED);
                 if (item < 0) return 0;
                 RECT r{};
@@ -1308,6 +1315,7 @@ void ReportWindow::OnDestroy() {
     tipText_ = {};
     trackingMouse_ = false;
     periodPending_ = false;
+    repaintAfterRecreate_ = false;
     pageTop_ = pageWidth_ = 0;
 }
 

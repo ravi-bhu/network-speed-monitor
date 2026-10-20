@@ -104,16 +104,18 @@ const std::wstring& NoValue() {
 }
 
 // Makes the brushes on their first frame and recolours them when the taskbar theme changes.
-bool PrepareBrushes(ID2D1RenderTarget* rt, OverlayBrushes& b, bool light) {
+// Returns the first creation failure, with no brushes kept, so the next frame tries again.
+HRESULT PrepareBrushes(ID2D1RenderTarget* rt, OverlayBrushes& b, bool light) {
     const Palette& pal = light ? kLight : kDark;
     if (!b.text || !b.upload || !b.download || !b.muted) {
         b = {};
-        if (FAILED(rt->CreateSolidColorBrush(D2D1::ColorF(pal.text), &b.text)) ||
-            FAILED(rt->CreateSolidColorBrush(D2D1::ColorF(pal.upload), &b.upload)) ||
-            FAILED(rt->CreateSolidColorBrush(D2D1::ColorF(pal.download), &b.download)) ||
-            FAILED(rt->CreateSolidColorBrush(D2D1::ColorF(pal.muted), &b.muted))) {
+        HRESULT hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.text), &b.text);
+        if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.upload), &b.upload);
+        if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.download), &b.download);
+        if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.muted), &b.muted);
+        if (FAILED(hr)) {
             b = {};
-            return false;
+            return hr;
         }
         b.light = light;
     } else if (b.light != light) {
@@ -123,7 +125,7 @@ bool PrepareBrushes(ID2D1RenderTarget* rt, OverlayBrushes& b, bool light) {
         b.muted->SetColor(D2D1::ColorF(pal.muted));
         b.light = light;
     }
-    return true;
+    return S_OK;
 }
 
 float WidthOf(const Text& t, const std::wstring& s) {
@@ -211,7 +213,7 @@ OverlaySizes MeasureOverlay(unsigned dpi, bool letters) {
             ToPixels(compact, dpi)};
 }
 
-void RenderOverlay(ID2D1DCRenderTarget* rt, OverlayBrushes& brushes, SIZE size, const OverlayContent& c) {
+HRESULT RenderOverlay(ID2D1DCRenderTarget* rt, OverlayBrushes& brushes, SIZE size, const OverlayContent& c) {
     const Text& t = GetText();
     const float dpi = static_cast<float>(c.dpi ? c.dpi : 96);
     const float scale = dpi / 96.0f;
@@ -223,10 +225,10 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, OverlayBrushes& brushes, SIZE size, 
     rt->BeginDraw();
     rt->Clear(D2D1::ColorF(0, 0, 0, 1.0f / 255.0f));  // alpha 1: invisible, but the whole rect takes clicks
 
-    const bool haveBrushes = PrepareBrushes(rt, brushes, c.light);
+    const HRESULT hr = PrepareBrushes(rt, brushes, c.light);
 
     float textLeft = 0;
-    if (haveBrushes && c.showGraph && c.history) {
+    if (SUCCEEDED(hr) && c.showGraph && c.history) {
         const float top = (height - kGraphHeight) / 2;
         const D2D1_RECT_F box{0, top, kGraphWidth, top + kGraphHeight};
         const double max = c.history->Max();
@@ -235,7 +237,7 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, OverlayBrushes& brushes, SIZE size, 
         textLeft = kGraphWidth + kGraphGap;
     }
 
-    if (t.ok && haveBrushes) {
+    if (SUCCEEDED(hr) && t.ok) {
         const float textWidth = std::max(0.0f, width - textLeft - 2 * kTextPad);
         for (bool upload : {true, false}) {
             const std::wstring value = c.speed ? FormatValue(upload ? c.speed->tx : c.speed->rx, c.units, c.compact)
@@ -255,7 +257,8 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, OverlayBrushes& brushes, SIZE size, 
     }
 
     // A software DC target never loses its device, so there is nothing to recreate on failure.
-    rt->EndDraw();
+    const HRESULT end = rt->EndDraw();
+    return FAILED(hr) ? hr : end;
 }
 
 }  // namespace nsm
