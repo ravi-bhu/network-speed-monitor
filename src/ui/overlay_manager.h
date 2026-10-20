@@ -80,6 +80,7 @@ private:
     void Execute(unsigned work);
 
     void Rebuild();
+    void EnsureHooks();  // installs whichever WinEvent hook is missing (none yet, or creation failed)
     void DestroyBars();
     void Teardown();  // DestroyBars and release the static instance
     void Probe(OccupiedProbe occupied);
@@ -112,6 +113,9 @@ private:
     bool light_ = false;
 
     std::vector<std::unique_ptr<Bar>> bars_;
+    // The taskbars Rebuild wanted an overlay on, including any whose window couldn't be created:
+    // a probe that finds the same set doesn't rebuild (a failed one is retried at the next rebuild).
+    std::vector<HWND> wanted_;
     HWND taskbar_ = nullptr;  // the Shell_TrayWnd the overlays were built for
     HWND trayNotify_ = nullptr;
     TaskbarSpaceWin10 space_;
@@ -138,6 +142,9 @@ bool WantsOverlay(bool primary, bool trayFound, bool allTaskbars);
 // The overlay tooltip's visual style (SetWindowTheme's app name): dark with a dark taskbar, as the
 // report's chart tooltip is in dark mode; nullptr (the default theme) when light or in high contrast.
 const wchar_t* OverlayTooltipTheme(bool taskbarLight, bool highContrast);
+// Whether two probes found the same taskbars, in any order: secondary taskbars are enumerated in
+// z-order, which changes whenever one is clicked.
+bool SameTaskbars(std::vector<HWND> a, std::vector<HWND> b);
 // What the 1 s tick does. followTaskbars re-reads each taskbar's rect (one GetWindowRect, no
 // UIA) every tick: Explorer doesn't raise a location event for the auto-hide slide, so a
 // hidden overlay would otherwise never notice the taskbar coming back.

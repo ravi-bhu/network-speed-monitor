@@ -1,3 +1,5 @@
+#include <cstdint>
+
 #include "doctest.h"
 
 #include <string_view>
@@ -99,4 +101,15 @@ TEST_CASE("ClickTracker: released off the overlay, other button, or capture lost
     t.Cancel();  // capture taken away mid-press
     CHECK(!t.Pending());
     CHECK(!t.Up(MouseButton::Right, true));
+}
+
+TEST_CASE("SameTaskbars: the order of a probe doesn't matter (#8)") {
+    const auto fake = [](uintptr_t v) { return reinterpret_cast<HWND>(v); };
+    const HWND a = fake(0x10), b = fake(0x20), c = fake(0x30);
+    CHECK(SameTaskbars({a, b, c}, {a, b, c}));
+    CHECK(SameTaskbars({a, b, c}, {a, c, b}));  // clicking a secondary taskbar reorders the z-order enumeration
+    CHECK(SameTaskbars({}, {}));
+    CHECK(!SameTaskbars({a, b}, {a, b, c}));  // one appeared
+    CHECK(!SameTaskbars({a, b, c}, {a, c}));  // one went away
+    CHECK(!SameTaskbars({a, b}, {a, c}));     // one replaced
 }

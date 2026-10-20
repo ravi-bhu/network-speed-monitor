@@ -1,11 +1,13 @@
 #include "ui/overlay_manager.h"
 
 #include <commctrl.h>
+#include <dwmapi.h>
 #include <uxtheme.h>
 #include <windowsx.h>
 
 #include <algorithm>
 #include <array>
+#include <functional>
 
 #include "platform/strings.h"
 #include "platform/theme.h"
@@ -68,8 +70,17 @@ bool IsMaximizedWithCaption(HWND hwnd) {
     return IsZoomed(hwnd) && (GetWindowLongW(hwnd, GWL_STYLE) & WS_CAPTION) == WS_CAPTION;
 }
 
+// Hidden by DWM though "visible": e.g. a window on another virtual desktop.
+bool IsCloaked(HWND hwnd) {
+    DWORD cloaked = 0;
+    return SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked != 0;
+}
+
+// A fullscreen app stays in front on its monitor when the foreground moves to another one (a
+// video left playing there), so its entry is kept until it closes, leaves the monitor, stops
+// covering it, or is minimized or cloaked (e.g. after a switch to another virtual desktop).
 bool StillFullscreen(HWND hwnd, HMONITOR monitor) {
-    return IsWindow(hwnd) && IsWindowVisible(hwnd) && !IsIconic(hwnd) &&
+    return IsWindow(hwnd) && IsWindowVisible(hwnd) && !IsIconic(hwnd) && !IsCloaked(hwnd) &&
            MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL) == monitor &&
            IsFullscreenOnMonitor(WindowRect(hwnd), MonitorRect(monitor), false, IsMaximizedWithCaption(hwnd));
 }
@@ -101,6 +112,12 @@ const wchar_t* OverlayTooltipTheme(bool taskbarLight, bool highContrast) {
     return taskbarLight || highContrast ? nullptr : L"DarkMode_Explorer";
 }
 
+bool SameTaskbars(std::vector<HWND> a, std::vector<HWND> b) {
+    std::sort(a.begin(), a.end(), std::less<>());
+    std::sort(b.begin(), b.end(), std::less<>());
+    return a == b;
+}
+
 OverlayManager::OverlayManager() = default;
 OverlayManager::~OverlayManager() {
     Shutdown();
@@ -118,8 +135,7 @@ bool OverlayManager::Init(HINSTANCE inst, HWND appWnd) {
     light_ = IsTaskbarLight();
     instance_ = this;
     initialized_ = true;
-    foregroundHook_ = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
-                                      &OverlayManager::OnWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
+    EnsureHooks();
     Run(kRebuild);
     return true;
 }
@@ -158,6 +174,7 @@ void OverlayManager::Update(std::optional<Speed> speed, const SpeedHistory& hist
     history_ = &history;
     if (!initialized_) return;
     ++ticksSinceProbe_;
+    EnsureHooks();
 
     const bool barsAlive = std::all_of(bars_.begin(), bars_.end(), [](const auto& b) { return IsWindow(b->info.hwnd); });
     const TickPlan plan = PlanTick(FindWindowW(L"Shell_TrayWnd", nullptr) != taskbar_ || !barsAlive, AnyShown(),
@@ -167,6 +184,12 @@ void OverlayManager::Update(std::optional<Speed> speed, const SpeedHistory& hist
     if (plan.fullProbe) work |= kFullProbe;
     if (plan.lightProbe) work |= kLightProbe;
     if (plan.followTaskbars) work |= kTaskbarMoved;
+    // Without the location hook nothing reports the tray or the Win10 task list changing size:
+    // look every tick (a few GetWindowRect calls) until the hook can be installed.
+    if (!locationHook_ && taskbar_) {
+        work |= kSpace;
+        if (std::any_of(bars_.begin(), bars_.end(), [](const auto& b) { return b->info.primary; })) work |= kTrayMoved;
+    }
     Run(work);
 }
 
@@ -305,6 +328,20 @@ void OverlayManager::Execute(unsigned w) {
     if (!flyoutOpen_ && (w & (kForeground | kZOrder))) RaiseShown(!(w & kForeground));
 }
 
+void OverlayManager::EnsureHooks() {
+    if (!initialized_) return;
+    if (!foregroundHook_) {
+        foregroundHook_ = SetWinEventHook(EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_FOREGROUND, nullptr,
+                                          &OverlayManager::OnWinEvent, 0, 0, WINEVENT_OUTOFCONTEXT);
+    }
+    DWORD explorerPid = 0;
+    if (locationHook_ || !taskbar_ || !GetWindowThreadProcessId(taskbar_, &explorerPid)) return;
+    // Covers the auto-hide slide, taskbar moves and resizes, and the tray and task list
+    // changing size. Explorer only: hooking every process would wake us on every caret move.
+    locationHook_ = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr,
+                                    &OverlayManager::OnWinEvent, explorerPid, 0, WINEVENT_OUTOFCONTEXT);
+}
+
 void OverlayManager::Rebuild() {
     DestroyBars();
     if (!initialized_) return;  // Shutdown ran while the restore's write pumped messages
@@ -318,6 +355,7 @@ void OverlayManager::Rebuild() {
     if (!initialized_) return;  // Shutdown ran while UIA pumped messages; it restored the space
     for (const TaskbarInfo& info : probed) {
         if (!WantsOverlay(info.primary, info.trayFound, options_.allTaskbars)) continue;
+        wanted_.push_back(info.hwnd);
         auto bar = std::make_unique<Bar>();
         bar->info = info;
         if (!bar->window.Create(inst_, appWnd_)) continue;
@@ -328,12 +366,7 @@ void OverlayManager::Rebuild() {
         bars_.push_back(std::move(bar));
     }
 
-    DWORD explorerPid = 0;
-    GetWindowThreadProcessId(taskbar_, &explorerPid);
-    // Covers the auto-hide slide, taskbar moves and resizes, and the tray and task list
-    // changing size. Explorer only: hooking every process would wake us on every caret move.
-    locationHook_ = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr,
-                                    &OverlayManager::OnWinEvent, explorerPid, 0, WINEVENT_OUTOFCONTEXT);
+    EnsureHooks();
     Place();
     if (!initialized_) return;  // Shutdown ran during the reservation's write
     EvaluateShell();
@@ -346,6 +379,7 @@ void OverlayManager::DestroyBars() {
     locationHook_ = nullptr;
     space_.Restore();
     bars_.clear();
+    wanted_.clear();
     taskbar_ = nullptr;
     trayNotify_ = nullptr;
     wasShown_ = false;
@@ -363,18 +397,21 @@ void OverlayManager::Probe(OccupiedProbe occupied) {
     const std::vector<TaskbarInfo> probed = ProbeTaskbars(occupied);
     if (!initialized_) return;  // Shutdown ran while UIA pumped messages
     std::vector<TaskbarInfo> wanted;
+    std::vector<HWND> wantedHwnds;
     for (const TaskbarInfo& info : probed) {
-        if (WantsOverlay(info.primary, info.trayFound, options_.allTaskbars)) wanted.push_back(info);
+        if (!WantsOverlay(info.primary, info.trayFound, options_.allTaskbars)) continue;
+        wanted.push_back(info);
+        wantedHwnds.push_back(info.hwnd);
     }
-    const bool sameSet = wanted.size() == bars_.size() &&
-                         std::equal(wanted.begin(), wanted.end(), bars_.begin(),
-                                    [](const TaskbarInfo& i, const auto& b) { return i.hwnd == b->info.hwnd; });
-    if (!sameSet) {
+    if (!SameTaskbars(std::move(wantedHwnds), wanted_)) {
         Rebuild();  // a taskbar appeared, went away, or lost its tray
         return;
     }
     for (size_t i = 0; i < wanted.size(); ++i) {
-        Bar& bar = *bars_[i];
+        const auto it = std::find_if(bars_.begin(), bars_.end(),
+                                     [&](const auto& b) { return b->info.hwnd == wanted[i].hwnd; });
+        if (it == bars_.end()) continue;  // its overlay couldn't be created
+        Bar& bar = **it;
         const bool measured = occupied == OccupiedProbe::All ||
                               (occupied == OccupiedProbe::SecondaryOnly && !bar.info.primary);
         const bool reserved = bar.info.primary && space_.InEffect();
@@ -499,7 +536,7 @@ void OverlayManager::RaiseShown(bool onlyIfCovered) {
     for (const auto& bar : bars_) {
         if (!bar->window.Visible()) continue;
         if (onlyIfCovered && !IsAbove(bar->info.hwnd, bar->window.Hwnd())) continue;
-        bar->window.RaiseTopmost();
+        bar->window.RaiseTopmost(bar->info.hwnd);
     }
 }
 

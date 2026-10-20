@@ -46,7 +46,9 @@ public:
     // its last frame (or stays hidden) until the next call.
     void Show(const OverlayPlacement& p, const OverlayContent& c);
     void Hide();
-    void RaiseTopmost();  // to the top of the topmost band, if visible; never activates
+    // If visible, raises it to just above `taskbar` (below the menus and tooltips over it), or
+    // to the top of the topmost band without one; never activates.
+    void RaiseTopmost(HWND taskbar = nullptr);
     bool Visible() const;
     HWND Hwnd() const { return hwnd_; }
 

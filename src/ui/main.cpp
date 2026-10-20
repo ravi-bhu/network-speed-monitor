@@ -22,6 +22,9 @@ constexpr wchar_t kDemoClass[] = L"NetworkSpeedMonitor.DemoWindow";
 class Demo {
 public:
     Demo() = default;
+    ~Demo() {
+        if (hwnd_) DestroyWindow(hwnd_);  // Start failed after creating it
+    }
     Demo(const Demo&) = delete;
     Demo& operator=(const Demo&) = delete;
 
@@ -69,6 +72,7 @@ private:
             case WM_DESTROY:
                 KillTimer(hwnd, 1);
                 self->manager_.Shutdown();  // restores the Win10 task list
+                self->hwnd_ = nullptr;
                 PostQuitMessage(0);
                 return 0;
             default:

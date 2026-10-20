@@ -61,6 +61,9 @@ public:
     // What to write back on exit: the natural size, but only while the task list still has the
     // rect we set. Once Explorer has changed it, the layout is Explorer's and is left alone.
     std::optional<Rect> RestoreTarget(const Rect& current) const;
+    // The rect just returned was not written (Explorer was hung): the task list still has
+    // `current`. The wanted rect stays owed, and a later Observe retries it.
+    void Unapplied(const Rect& current);
 
 private:
     std::optional<Rect> Step(const Rect& current, uint64_t nowMs);
@@ -91,15 +94,18 @@ public:
     // Finds the rebar and task-switch windows of `taskbar` (Shell_TrayWnd) and records the
     // task-switch window's current rect as its natural size. False if they aren't there.
     bool Attach(HWND taskbar);
-    // Shrinks the task list so it ends `margin` before `overlay` (screen px); an empty overlay
-    // asks for the natural size. Called while a write is in flight, it runs once that returns.
+    // Shrinks the task list so it ends `margin` px before `overlay`; an empty overlay asks for
+    // the natural size. `overlay` is in screen px; it is mapped to rebar client coordinates,
+    // where the task list is measured and kept, so the auto-hide slide doesn't move it.
+    // Called while a write is in flight, it runs once that returns.
     void Reserve(const Rect& overlay, Edge edge, int margin);
     // Call for location changes of Rebar() or TaskSwitch(), and periodically: re-applies if
     // Explorer re-laid out the task list (rate-limited). Returns true if it wrote a new rect.
     bool OnLocationChange(HWND hwnd);
     // Puts the task list back to its natural size, unless Explorer has re-laid it out since, and
     // detaches. Called while a write to Explorer is in flight (a re-entrant WM_ENDSESSION), it
-    // runs as soon as that write returns, so the shrink can't land after the restore.
+    // runs as soon as that write returns, so the shrink can't land after the restore. A hung
+    // Explorer gets the restore posted (SWP_ASYNCWINDOWPOS) instead, so exit never blocks on it.
     void Restore();
 
     bool Attached() const { return taskSw_ != nullptr; }
@@ -110,7 +116,9 @@ public:
     HWND TaskSwitch() const { return taskSw_; }
 
 private:
-    void Write(const Rect& r);
+    // Writes `r` (rebar client coordinates) to the task list. While Explorer is hung a resize is
+    // skipped and stays owed; a restore is posted instead. False if nothing was written.
+    bool Write(const Rect& r, bool restore = false);
     Rect CurrentInRebar() const;  // task-switch rect in rebar client coordinates
 
     struct Request {
