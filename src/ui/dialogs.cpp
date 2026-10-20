@@ -16,7 +16,6 @@
 #include "platform/theme.h"
 #include "resource.h"
 #include "ui/report_paint.h"
-#include "ui/report_window.h"
 
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
