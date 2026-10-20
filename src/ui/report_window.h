@@ -41,11 +41,14 @@ public:
     bool PreTranslateMessage(MSG& msg);
 
     void SetCorruptionNotice(std::filesystem::path recoveredFile);
-    void SetSavedRect(std::optional<RECT> rect);  // where the next Show creates the window
+    // Where the next Show creates the window (its restored bounds), and whether it opens maximized.
+    void SetSavedRect(std::optional<RECT> rect, bool maximized = false);
     void SetThemeOverride(std::optional<ReportTheme> theme);  // development runs only
 
     std::function<void()> beforeQuery;          // App::FlushNow
-    std::function<void(RECT)> onBoundsChanged;  // the window was moved or resized (screen px)
+    // The window was moved, resized or closed maximized: its restored bounds (screen px) and whether it is
+    // maximized (or minimized from maximized).
+    std::function<void(RECT, bool)> onBoundsChanged;
     std::function<void()> onAdaptersChanged;    // a rename or hide/unhide was stored
 
 private:
@@ -119,6 +122,8 @@ private:
     bool showHiddenRows_ = false;
 
     std::optional<RECT> savedRect_;
+    bool savedMaximized_ = false;
+    bool repaintAfterRecreate_ = false;  // a canvas lost its render target and asked for one more paint
     std::filesystem::path corruptFile_;
 };
 
@@ -127,6 +132,12 @@ private:
 // Where the report window opens: the saved rect moved inside `work` (shrunk to fit, grown to
 // `minSize` when smaller), or `defaultSize` centred in `work` when nothing was saved. Screen pixels.
 RECT FitReportRect(const std::optional<RECT>& saved, const RECT& work, SIZE defaultSize, SIZE minSize);
+// GetWindowPlacement's rcNormalPosition is in workspace coordinates, whose (0, 0) is the corner of the work
+// area of the window's monitor: shifted from screen coordinates when a taskbar is on the left or top edge.
+RECT WorkspaceToScreen(RECT r, const RECT& monitor, const RECT& work);
+// WM_CONTEXTMENU from the keyboard (Shift+F10 or the menu key) has the point (-1, -1). Not lParam == -1: on
+// 64-bit Windows the lParam is 0xFFFFFFFF.
+bool IsKeyboardContextMenu(LPARAM lp);
 
 enum class TableColumn { Name, Type, Received, Sent, Total };
 struct TableSort {

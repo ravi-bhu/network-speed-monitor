@@ -243,17 +243,24 @@ int App::Run(HINSTANCE inst, const std::wstring& cmdLine) {
                 if (msg.hwnd == hwnd_ && msg.message == WM_APP_SHOWMENU) {
                     menuPending_ = true;
                     menuPt_ = POINT{GET_X_LPARAM(msg.lParam), GET_Y_LPARAM(msg.lParam)};
+                } else if (msg.hwnd == hwnd_ && msg.message == WM_APP_SHOWREPORT) {
+                    reportPending_ = true;
                 } else if (report_ && report_->PreTranslateMessage(msg)) {
                     // keyboard navigation inside the report window
                 } else {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                 }
-                // The menu runs from here, the top-level loop, never from inside a nested (COM/UIA)
-                // pump that happened to dispatch the request.
-                while (menuPending_ && !exiting_) {
-                    menuPending_ = false;
-                    ShowMenu(menuPt_);
+                // The menu and the report open from here, the top-level loop, never from inside a nested
+                // (COM/UIA) pump that happened to dispatch the request.
+                while ((menuPending_ || reportPending_) && !exiting_) {
+                    if (reportPending_) {
+                        reportPending_ = false;
+                        ShowReport(0);
+                    } else {
+                        menuPending_ = false;
+                        ShowMenu(menuPt_);
+                    }
                 }
             }
             code = static_cast<int>(msg.wParam);
@@ -359,7 +366,9 @@ LRESULT App::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             SetTimer(hwnd_, kRefreshTimer, kRefreshDelayMs, nullptr);
             return 0;
         case WM_APP_SHOWREPORT:
-            ShowReport(0);
+            // As WM_APP_SHOWMENU: dispatched by a nested pump, so defer to the top-level loop and wake it.
+            reportPending_ = true;
+            PostMessageW(hwnd_, WM_NULL, 0, 0);
             return 0;
         case WM_APP_SHOWMENU:
             // Dispatched by a nested pump rather than the top-level loop: defer to that loop, and wake it,
@@ -503,14 +512,15 @@ void App::ShowReport(int tab) {
     if (!report_) {
         report_ = std::make_unique<ReportWindow>(inst_, store_, hwnd_);
         report_->beforeQuery = [this] { FlushNow(); };
-        report_->onBoundsChanged = [this](RECT r) {
+        report_->onBoundsChanged = [this](RECT r, bool maximized) {
             settings_.reportRect = r;
+            settings_.reportMaximized = maximized;
             SaveSettingsFile();
         };
         report_->onAdaptersChanged = [this] { ReloadAdapterNames(); };
         if (!recoveredFile_.empty()) report_->SetCorruptionNotice(recoveredFile_);
         report_->SetThemeOverride(reportTheme_);
-        report_->SetSavedRect(settings_.reportRect);
+        report_->SetSavedRect(settings_.reportRect, settings_.reportMaximized);
     }
     report_->Show(tab);
 }

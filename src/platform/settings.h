@@ -16,7 +16,8 @@ struct Settings {
     bool showGraph = true;
     bool letters = false;
     bool allTaskbars = false;
-    std::optional<RECT> reportRect;
+    std::optional<RECT> reportRect;  // the report's restored (not maximized) bounds, screen px
+    bool reportMaximized = false;
 
     friend bool operator==(const Settings& a, const Settings& b) {
         auto rectEq = [](const std::optional<RECT>& x, const std::optional<RECT>& y) {
@@ -26,7 +27,8 @@ struct Settings {
         };
         return a.startWithWindows == b.startWithWindows && a.adapterId == b.adapterId &&
                a.units == b.units && a.showGraph == b.showGraph && a.letters == b.letters &&
-               a.allTaskbars == b.allTaskbars && rectEq(a.reportRect, b.reportRect);
+               a.allTaskbars == b.allTaskbars && rectEq(a.reportRect, b.reportRect) &&
+               a.reportMaximized == b.reportMaximized;
     }
 };
 

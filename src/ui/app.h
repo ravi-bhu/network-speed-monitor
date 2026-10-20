@@ -100,6 +100,7 @@ private:
     bool refreshAgain_ = false;
     bool exiting_ = false;
     bool menuPending_ = false;
+    bool reportPending_ = false;
     bool settingsOpen_ = false;
     POINT menuPt_{};
     std::FILE* trace_ = nullptr;  // --trace <file> (Debug builds): one CSV line per tick

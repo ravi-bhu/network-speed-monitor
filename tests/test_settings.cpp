@@ -66,6 +66,7 @@ TEST_CASE("Settings round trip of non-default values") {
     s.letters = true;
     s.allTaskbars = true;
     s.reportRect = RECT{10, -20, 810, 620};
+    s.reportMaximized = true;
     REQUIRE(SaveSettings(t.path, s));
     CHECK(LoadSettings(t.path) == s);
     CHECK(TempFilesOf(t.path).empty());
@@ -122,6 +123,17 @@ TEST_CASE("Settings report rect needs all four keys and positive size") {
     REQUIRE(r.has_value());
     CHECK(r->left == 5);
     CHECK(r->bottom == 101);
+}
+
+TEST_CASE("Settings report window maximized flag: only 1 turns it on") {
+    TempIni t;
+    t.Write("[ReportWindow]\r\nLeft=5\r\nTop=6\r\nRight=100\r\nBottom=101\r\nMaximized=1\r\n");
+    CHECK(LoadSettings(t.path).reportMaximized);
+    t.Write("[ReportWindow]\r\nLeft=5\r\nTop=6\r\nRight=100\r\nBottom=101\r\nMaximized=yes\r\n");
+    CHECK_FALSE(LoadSettings(t.path).reportMaximized);
+    t.Write("[General]\r\nMaximized=1\r\n");  // another section's key
+    CHECK_FALSE(LoadSettings(t.path).reportMaximized);
+    CHECK_FALSE(Settings{}.reportMaximized);
 }
 
 TEST_CASE("SaveSettings fails when the directory does not exist") {
