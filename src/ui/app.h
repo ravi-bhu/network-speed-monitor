@@ -121,8 +121,9 @@ struct AdapterMenuItem {
     std::wstring label;
     bool checked = false;
 };
-// Automatic first, then the present adapters that are not hidden, by display name. The pinned
-// adapter is listed even when it is absent or hidden, so the check mark always has a place.
+// Automatic first, then the present adapters that are recognizable and not hidden, by display name.
+// The pinned adapter is listed even when it is absent, hidden or unrecognizable, so the check mark
+// always has a place.
 std::vector<AdapterMenuItem> BuildAdapterMenu(const std::vector<AdapterInfo>& present,
                                               const std::vector<AdapterMeta>& stored, const std::wstring& pinnedId,
                                               const std::wstring& automaticLabel);

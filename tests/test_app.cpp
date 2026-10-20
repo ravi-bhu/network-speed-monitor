@@ -116,6 +116,21 @@ TEST_CASE("BuildAdapterMenu keeps a pinned adapter that is absent or hidden, so 
     CHECK(menu[2].checked);
 }
 
+TEST_CASE("BuildAdapterMenu leaves out adapters a user would not recognize, unless pinned") {
+    AdapterInfo direct = Present(L"{D}", L"Local Area Connection* 2");
+    direct.recognizable = false;
+    const std::vector<AdapterInfo> present{Present(L"{W}", L"Wi-Fi"), direct};
+
+    auto menu = BuildAdapterMenu(present, {}, L"", L"Automatic");
+    REQUIRE(menu.size() == 2);
+    CHECK(menu[1].id == L"{W}");
+
+    menu = BuildAdapterMenu(present, {}, L"{D}", L"Automatic");
+    REQUIRE(menu.size() == 3);
+    CHECK(menu[1].id == L"{D}");
+    CHECK(menu[1].checked);
+}
+
 TEST_CASE("EscapeMenuText doubles ampersands so names are not read as mnemonics") {
     CHECK(EscapeMenuText(L"R&D LAN") == L"R&&D LAN");
     CHECK(EscapeMenuText(L"&&") == L"&&&&");
