@@ -59,12 +59,13 @@ void OverlayWindow::Show(const OverlayPlacement& p, const OverlayContent& c) {
     if (FAILED(rt_->BindDC(memDc_, &bounds))) return;
     OverlayContent content = c;
     content.showGraph = p.showGraph;
-    RenderOverlay(rt_, size, content);
+    // A failed draw leaves the DIB stale or blank: keep the last good frame on screen instead.
+    if (FAILED(RenderOverlay(rt_, brushes_, size, content))) return;
 
     POINT dst{p.rect.left, p.rect.top};
     POINT src{0, 0};
     BLENDFUNCTION blend{AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-    UpdateLayeredWindow(hwnd_, nullptr, &dst, &size, memDc_, &src, 0, &blend, ULW_ALPHA);
+    if (!UpdateLayeredWindow(hwnd_, nullptr, &dst, &size, memDc_, &src, 0, &blend, ULW_ALPHA)) return;
     // Topmost is asserted only when the window appears; afterwards the owner decides when to
     // re-assert it (RaiseTopmost), so a fullscreen app or a shell flyout is never covered.
     if (!IsWindowVisible(hwnd_))
@@ -72,6 +73,7 @@ void OverlayWindow::Show(const OverlayPlacement& p, const OverlayContent& c) {
 }
 
 void OverlayWindow::Hide() {
+    if (hwnd_ && GetCapture() == hwnd_) ReleaseCapture();  // a press on a hidden overlay is no click
     if (hwnd_ && IsWindowVisible(hwnd_)) ShowWindow(hwnd_, SW_HIDE);
 }
 
@@ -138,15 +140,32 @@ LRESULT OverlayWindow::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
     switch (msg) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
-        case WM_LBUTTONUP:
-            if (onLeftClick) onLeftClick();
+        case WM_LBUTTONDOWN:
+        case WM_RBUTTONDOWN:
+            clicks_.Down(msg == WM_LBUTTONDOWN ? MouseButton::Left : MouseButton::Right);
+            if (GetCapture() != hwnd_) SetCapture(hwnd_);  // the button-up arrives here even off the overlay
             return 0;
+        case WM_LBUTTONUP:
         case WM_RBUTTONUP: {
             POINT pt{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
-            ClientToScreen(hwnd_, &pt);
-            if (onRightClick) onRightClick(pt);
+            RECT client{};
+            GetClientRect(hwnd_, &client);
+            const MouseButton button = msg == WM_LBUTTONUP ? MouseButton::Left : MouseButton::Right;
+            const bool click = clicks_.Up(button, PtInRect(&client, pt) != FALSE);
+            // Release before the callbacks: a right click opens a menu, which needs the mouse.
+            if (!clicks_.Pending() && GetCapture() == hwnd_) ReleaseCapture();
+            if (!click) return 0;
+            if (msg == WM_LBUTTONUP) {
+                if (onLeftClick) onLeftClick();
+            } else {
+                ClientToScreen(hwnd_, &pt);
+                if (onRightClick) onRightClick(pt);
+            }
             return 0;
         }
+        case WM_CAPTURECHANGED:
+            if (reinterpret_cast<HWND>(lp) != hwnd_) clicks_.Cancel();
+            return 0;
         case WM_DPICHANGED:
             return 0;  // size and position come from the taskbar probe, not from the suggested rect
         case WM_CLOSE:

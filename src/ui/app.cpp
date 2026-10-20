@@ -243,17 +243,24 @@ int App::Run(HINSTANCE inst, const std::wstring& cmdLine) {
                 if (msg.hwnd == hwnd_ && msg.message == WM_APP_SHOWMENU) {
                     menuPending_ = true;
                     menuPt_ = POINT{GET_X_LPARAM(msg.lParam), GET_Y_LPARAM(msg.lParam)};
+                } else if (msg.hwnd == hwnd_ && msg.message == WM_APP_SHOWREPORT) {
+                    reportPending_ = true;
                 } else if (report_ && report_->PreTranslateMessage(msg)) {
                     // keyboard navigation inside the report window
                 } else {
                     TranslateMessage(&msg);
                     DispatchMessageW(&msg);
                 }
-                // The menu runs from here, the top-level loop, never from inside a nested (COM/UIA)
-                // pump that happened to dispatch the request.
-                while (menuPending_ && !exiting_) {
-                    menuPending_ = false;
-                    ShowMenu(menuPt_);
+                // The menu and the report open from here, the top-level loop, never from inside a nested
+                // (COM/UIA) pump that happened to dispatch the request.
+                while ((menuPending_ || reportPending_) && !exiting_) {
+                    if (reportPending_) {
+                        reportPending_ = false;
+                        ShowReport(0);
+                    } else {
+                        menuPending_ = false;
+                        ShowMenu(menuPt_);
+                    }
                 }
             }
             code = static_cast<int>(msg.wParam);
@@ -359,7 +366,9 @@ LRESULT App::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             SetTimer(hwnd_, kRefreshTimer, kRefreshDelayMs, nullptr);
             return 0;
         case WM_APP_SHOWREPORT:
-            ShowReport(0);
+            // As WM_APP_SHOWMENU: dispatched by a nested pump, so defer to the top-level loop and wake it.
+            reportPending_ = true;
+            PostMessageW(hwnd_, WM_NULL, 0, 0);
             return 0;
         case WM_APP_SHOWMENU:
             // Dispatched by a nested pump rather than the top-level loop: defer to that loop, and wake it,
@@ -503,14 +512,15 @@ void App::ShowReport(int tab) {
     if (!report_) {
         report_ = std::make_unique<ReportWindow>(inst_, store_, hwnd_);
         report_->beforeQuery = [this] { FlushNow(); };
-        report_->onBoundsChanged = [this](RECT r) {
+        report_->onBoundsChanged = [this](RECT r, bool maximized) {
             settings_.reportRect = r;
+            settings_.reportMaximized = maximized;
             SaveSettingsFile();
         };
         report_->onAdaptersChanged = [this] { ReloadAdapterNames(); };
         if (!recoveredFile_.empty()) report_->SetCorruptionNotice(recoveredFile_);
         report_->SetThemeOverride(reportTheme_);
-        report_->SetSavedRect(settings_.reportRect);
+        report_->SetSavedRect(settings_.reportRect, settings_.reportMaximized);
     }
     report_->Show(tab);
 }
@@ -539,19 +549,22 @@ void App::ShowSettings() {
     settingsOpen_ = true;
     if (recording_) metas_ = store_.Adapters();
     // The same list as the right-click menu: not hidden, plus the pinned adapter even if hidden or gone.
-    std::vector<AdapterChoice> choices;
+    std::vector<AdapterChoice> listed;
     const std::vector<AdapterMenuItem> items =
         BuildAdapterMenu(adapters_, metas_, settings_.adapterId, LoadStr(IDS_MENU_AUTOMATIC));
-    for (size_t i = 1; i < items.size(); ++i) choices.emplace_back(items[i].id, items[i].label);
+    for (size_t i = 1; i < items.size(); ++i) listed.emplace_back(items[i].id, items[i].label);
+    const std::vector<AdapterChoice> choices = SettingsAdapterChoices(listed, settings_.adapterId);
 
     SettingsDialogOptions options;
     options.dark = reportTheme_ ? *reportTheme_ == ReportTheme::Dark : (!IsHighContrast() && !AreAppsLight());
     options.dataDir = dataDir_;
-    Settings next = settings_;
-    const bool ok = ShowSettingsDialog(hwnd_, next, choices, &options);
+    const std::optional<SettingsDialogState> chosen = ShowSettingsDialog(hwnd_, settings_, choices, &options);
     settingsOpen_ = false;
-    if (!ok || exiting_) return;
+    if (!chosen || exiting_) return;
 
+    // Only the dialog's fields, onto settings_ as it is now: the report window may have been moved or resized
+    // (reportRect) while the dialog was open.
+    const Settings next = ApplyDialogState(settings_, *chosen, choices);
     const bool autostartChanged = next.startWithWindows != settings_.startWithWindows;
     settings_ = next;
     if (autostartChanged) SetAutostart(settings_.startWithWindows);  // a failure is retried at the next start
