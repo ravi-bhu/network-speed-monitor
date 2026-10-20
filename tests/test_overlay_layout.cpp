@@ -110,3 +110,74 @@ TEST_CASE("IsFullscreenOnMonitor: a maximized window over an auto-hidden taskbar
     CHECK(!IsFullscreenOnMonitor({-8, -8, 1928, 1088}, {0, 0, 1920, 1080}, false, true));
     CHECK(IsFullscreenOnMonitor({-8, -8, 1928, 1088}, {0, 0, 1920, 1080}, false, false));  // borderless fullscreen
 }
+
+TEST_CASE("PlaceOverlay: short vertical taskbar with nothing on it hides instead of sticking out (#4)") {
+    // Right taskbar 100 px tall with the tray in its bottom 70: 26 px above the tray for a 40 px readout.
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {1720, 500, 1920, 600}, {1720, 530, 1920, 600}, {}, Edge::Right, 96};
+    CHECK(!PlaceOverlay(g, {150, 90, 40}, false).visible);
+    g.taskbar.top = 480;  // 46 px: fits
+    auto p = PlaceOverlay(g, {150, 90, 40}, false);
+    CHECK(p.visible);
+    CHECK(p.rect == Rect{1724, 486, 1916, 526});
+}
+
+TEST_CASE("PlaceOverlay: right taskbar stacks above the tray like a left one (#4)") {
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {1720, 0, 1920, 1080}, {1720, 900, 1920, 1080}, {1720, 0, 1920, 400},
+                      Edge::Right, 96};
+    auto p = PlaceOverlay(g, {150, 54, 40}, true);
+    CHECK(p.visible);
+    CHECK(p.showGraph);
+    CHECK(p.rect == Rect{1724, 816, 1916, 896});
+}
+
+TEST_CASE("PlaceOverlay: top taskbar sits left of the tray, centred in the bar (#4)") {
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {0, 0, 1920, 48}, {1700, 0, 1920, 48}, {0, 0, 1000, 48}, Edge::Top, 96};
+    auto p = PlaceOverlay(g, {150, 90, 40}, true);
+    CHECK(p.visible);
+    CHECK(p.showGraph);
+    CHECK(p.rect == Rect{1546, 4, 1696, 44});
+}
+
+TEST_CASE("PlaceOverlay: a readout taller than a horizontal taskbar is clamped to its thickness (#4)") {
+    // "Use small taskbar buttons": a 30 px bar under a 32 px readout.
+    TaskbarGeometry g{{0, 0, 1920, 1080}, {0, 1050, 1920, 1080}, {1700, 1050, 1920, 1080}, {}, Edge::Bottom, 96};
+    auto p = PlaceOverlay(g, {150, 90, 32}, false);
+    CHECK(p.visible);
+    CHECK(p.rect == Rect{1606, 1050, 1696, 1080});
+    g.edge = Edge::Top;
+    g.taskbar = {0, 0, 1920, 30};
+    g.tray = {1700, 0, 1920, 30};
+    CHECK(PlaceOverlay(g, {150, 90, 32}, false).rect == Rect{1606, 0, 1696, 30});
+}
+
+TEST_CASE("PlaceOverlay: an empty tray Rect{} places at the taskbar's far end, like FallbackTray (#4)") {
+    // A monitor right of the primary, so a {0,0,0,0} tray is nowhere near the taskbar.
+    TaskbarGeometry h{{1920, 0, 3840, 1080}, {1920, 1040, 3840, 1080}, {}, {}, Edge::Bottom, 96};
+    auto a = PlaceOverlay(h, {150, 90, 40}, false);
+    CHECK(a.visible);
+    CHECK(a.rect == Rect{3746, 1040, 3836, 1080});
+    TaskbarGeometry v{{1920, 0, 3840, 1080}, {1920, 0, 2120, 1080}, {}, {}, Edge::Left, 96};
+    auto b = PlaceOverlay(v, {150, 90, 40}, false);
+    CHECK(b.visible);
+    CHECK(b.rect == Rect{1924, 1036, 2116, 1076});
+}
+
+TEST_CASE("IsTaskbarShown: vertical edges (#4)") {
+    const Rect monitor{0, 0, 1920, 1080};
+    CHECK(IsTaskbarShown({0, 0, 62, 1080}, monitor, Edge::Left));
+    CHECK(!IsTaskbarShown({-60, 0, 2, 1080}, monitor, Edge::Left));  // auto-hidden: 2 px peek
+    CHECK(IsTaskbarShown({1858, 0, 1920, 1080}, monitor, Edge::Right));
+    CHECK(!IsTaskbarShown({1918, 0, 1980, 1080}, monitor, Edge::Right));
+}
+
+TEST_CASE("IsTaskbarShown: exactly half visible counts as shown (#4)") {
+    const Rect monitor{0, 0, 1920, 1080};
+    CHECK(IsTaskbarShown({0, 1060, 1920, 1100}, monitor, Edge::Bottom));   // 20 of 40
+    CHECK(!IsTaskbarShown({0, 1061, 1920, 1101}, monitor, Edge::Bottom));  // 19 of 40
+    CHECK(IsTaskbarShown({0, -20, 1920, 20}, monitor, Edge::Top));
+    CHECK(!IsTaskbarShown({0, -21, 1920, 19}, monitor, Edge::Top));
+    CHECK(IsTaskbarShown({-31, 0, 31, 1080}, monitor, Edge::Left));  // 31 of 62
+    CHECK(!IsTaskbarShown({-32, 0, 30, 1080}, monitor, Edge::Left));
+    CHECK(IsTaskbarShown({1889, 0, 1951, 1080}, monitor, Edge::Right));
+    CHECK(!IsTaskbarShown({1890, 0, 1952, 1080}, monitor, Edge::Right));
+}
