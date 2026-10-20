@@ -25,14 +25,14 @@ Passed:
 - **Silent reinstall (F2):** the app was running about 6 s later, and the Run value and Start menu entry are back.
 
 Found (filed as issues):
-- In dark mode the report's "Show hidden adapters" checkbox draws as a solid white box. The Settings dialog custom-draws its check boxes, but the report window doesn't.
+- In dark mode the report's "Show hidden adapters" checkbox draws as a solid white box. The Settings dialog custom-draws its check boxes, but the report window doesn't (#26). PR #55 draws it dark; see "UI fixes" below.
 - On an accent-coloured (light tan) taskbar the readout uses the dark-taskbar palette: white text and an orange graph with low contrast. The palette follows the light/dark *mode*, not the taskbar's actual colour.
-- When the period is This month (or Today or This week), the period card duplicates the matching fixed card.
+- When the period is This month (or Today or This week), the period card duplicates the matching fixed card (#28). PR #56 drops the duplicate card; see "UI fixes" below.
 - The overlay tooltip didn't appear on synthetic mouse hover. Check it with a real mouse before treating it as a bug.
 
 Guided checks (the user changed the setting, then the app was checked by screenshot and window geometry):
 - **Explorer restart:** pass. The readout was back about 4 s after `explorer.exe` was killed (mostly Explorer's own startup), in the same app process. The task list ended 5 px before it.
-- **Tooltip:** shows "Automatic: Wi-Fi" on a real mouse hover. Synthetic hover didn't trigger it. It stays light in dark mode (#29).
+- **Tooltip:** shows "Automatic: Wi-Fi" on a real mouse hover. Synthetic hover didn't trigger it. It stayed light in dark mode (#29). PR #57 makes it follow the taskbar's mode; see "UI fixes" below.
 - **Light mode:** pass. Switched live, with no restart, to dark text, ↑ `#B35C00` and ↓ `#0067C0`, readable. The dark-mode "tan" taskbar was wallpaper transparency, not an accent colour, and white text there matches the system clock (#27, closed).
 - **Crowding, Combine: Never:** pass. With 10 and then 25 Notepad windows, the task list stopped at 180..1480 with paging arrows. The readout stayed at 1485..1644 with its graph, with no overlap.
 - **Taskbar at the top:** pass (task list 180..1480, readout 1485..1644, vertically centred).
@@ -96,7 +96,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 125% scaling, dar
 - [ ] **Shell flyouts:** the readout is never drawn over any of these: Start, search, Action Center, Task View (Win+Tab), Alt+Tab, the tray overflow (^), the clock/calendar, volume and network flyouts. If one does get covered, record its window class (e.g. with Spy++).
 - [ ] **Z-order:** click an empty part of the taskbar, then a task button, then the desktop. The readout stays in front of the taskbar each time (it's re-raised when the foreground changes, and the 1 s tick catches the rest).
 - [ ] **30 real windows,** with "Combine taskbar buttons" set to Never and then Always. The task list scrolls rather than running under the readout. Exit the demo cleanly; the task list gets its full width back.
-- [ ] **Forced kill** (`taskkill /f /im NetworkSpeedMonitor.exe`): the task list stays short (a known limitation). Record what restores it (opening a window, resizing the taskbar, restarting Explorer).
+- [ ] **Forced kill** (`taskkill /f /im NetworkSpeedMonitor.exe`): the task list stays short (a known limitation). Record what restores it (opening a window, resizing the taskbar, restarting Explorer). Since PR #51, starting the demo again and exiting it cleanly also restores it (#9).
 - [ ] **Re-layout loop damping:** while the demo runs, add and remove tray icons and change the taskbar size a few times. The task list ends before the readout each time. If Explorer keeps undoing the reservation (more than 5 re-applies in 2 s), the demo backs off for 10 s and then tries again; record whether that ever shows.
 - [ ] **Sign out or shut down** with the demo running. After signing back in, the task list has its full width (restored on WM_ENDSESSION).
 - [ ] **Theme:** switch Dark/Light while it runs. The readout recolors within 1 s, with no restart.
@@ -181,14 +181,14 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Release memory:** with a Release build and your real data, open the report, visit every tab, close it, then wait a minute. Task Manager's "Memory (private working set)" is back under 15 MB.
 - [ ] **Screen reader:** Narrator reads the period box, buttons, tabs and table cells. The Summary and Timeline drawings aren't exposed to UI Automation (a known gap); record how Narrator handles them.
 - [ ] **taskkill while a popup shows:** with the chart's tooltip or any menu visible, `taskkill` without `/f` may hit the popup's system shadow window and do nothing. This is a known limitation, shared by the overlay's own tooltip and menu. Confirm that it works once the popup is gone.
-- [ ] **Windows 11 VM:** all of the above, plus whether the Win11 dark mode draws the checkbox, combo box and scroll bars dark.
+- [ ] **Windows 11 VM:** all of the above, plus whether the Win11 dark mode draws the combo box and scroll bars dark. (The checkbox is drawn by the app since #26.)
 
 ## Task 16: Settings dialog and About
 - [ ] **Settings from the menu:** right-click the overlay and choose Settings…. Every control changes the overlay at once on OK (units, graph, letters, all taskbars, adapter), and Cancel or Esc changes nothing. After restarting the app the dialog shows the same values.
 - [ ] **Start with Windows:** unchecking it and pressing OK removes `HKCU\...\Run\NetworkSpeedMonitor`. Checking it again and pressing OK writes it back (the automated run saw the value removed, not re-added through the dialog).
 - [ ] **Manage adapters…:** the dialog closes with your changes applied, and the report opens on the Adapters tab.
 - [ ] **Open data folder:** Explorer opens `%LOCALAPPDATA%\NetworkSpeedMonitor`.
-- [ ] **About link:** configure with `-DNSM_SOURCE_URL=<url>`; the "Source code" link appears under the About line and opens that URL in the default browser. Without the option there is no link. The link is the system blue, which is dim on the dark dialog (about 3:1); check how it looks on your display and with a High Contrast theme.
+- [ ] **About link:** configure with `-DNSM_SOURCE_URL=<url>`; the "Source code" link appears under the About line and opens that URL in the default browser. Without the option there is no link. In dark mode the link uses the accent colour, a light blue that reads well on the dark dialog (#22); in light mode it's the system blue. Check how it looks with a High Contrast theme.
 - [ ] **Dark and High Contrast:** the dialog follows the Windows app theme. Check the check boxes and radio buttons (drawn by the app in dark mode) and the combo box on Windows 10 and Windows 11, and that High Contrast uses the system controls.
 - [ ] **Pinned adapter that is hidden or unplugged:** pin an adapter, hide it in the report, and open Settings. It is still listed and selected, and OK keeps it pinned.
 - [ ] **DPI:** open the dialog at 100%, 125% and 150% scaling; nothing clips, including long adapter names in the combo box.
@@ -215,3 +215,47 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [x] **Silent fresh install starts the app (F2):** on a machine without the app, run the installer with `/VERYSILENT` (or `winget install`). The overlay appears without a sign-out, and `HKCU\...\Run\NetworkSpeedMonitor` exists afterwards (the app writes it on its first run).
 - [ ] **Interactive uninstall still asks about history (F2):** with the app running, uninstall from Settings > Apps. The app closes by itself, and the uninstaller still asks "Also delete your usage history?" (default No). The app is closed as the uninstaller starts, so cancelling at its "Are you sure" prompt leaves the app closed; start it again from the Start menu.
 - [x] **Setup log (F2):** run the installer with `/LOG=setup.log` while the app runs; the log has "Network Speed Monitor was running; asked it to close."
+
+## UI fixes (PRs #48-#57)
+
+Run these on a build with all ten PRs merged. Each check applies to Windows 10 and Windows 11 unless its heading or label says otherwise. The issue each one covers is in brackets.
+
+### Overlay
+- [ ] **Clicks:** left-click the readout; the report opens once. Right-click it; the menu opens at the pointer and its items work. (#6)
+- [ ] **Drags aren't clicks:** press a mouse button on the desktop, drag onto the readout and release: nothing happens. Press on the readout, drag off it and release: nothing happens. Try both directions with the left and the right button. (#6)
+- [ ] **Start menu during a click:** press on the readout, press the Windows key while still holding the button (Start opens), then release. No click is acted on (no report, no menu), and later clicks work as usual. (#6)
+- [ ] **Live theme switch:** set the Windows mode to Dark and hover the readout; the tooltip is dark. Turn on Use letters, then switch to Light while the app runs. The text, both arrows, the grey U:/D: labels and the tooltip all change at once, with no restart. Switch back to Dark; they all go dark again. (#7, #29)
+- [ ] **Letter labels:** with Use letters on, U: and D: are grey, the values are white on a dark taskbar and black on a light one, and the space after each label isn't coloured. (#7)
+- [ ] **Sharpness:** at 125% and at 150% scaling, both lines are equally sharp. (#7)
+- [ ] **High Contrast tooltip:** turn on a High Contrast theme and hover the readout. The tooltip uses the theme's colours. (#29)
+- [ ] **Secondary taskbars:** with two monitors and `--all-taskbars`, click the secondary taskbar again and again. The readouts don't flicker, and on Windows 10 the task buttons don't jump. (#8)
+- [ ] **Shell popups on top:** the taskbar's right-click menu, a jump list and a tray icon's tooltip next to the readout all draw over it. (#8)
+- [ ] **Fullscreen, then another desktop:** play a video fullscreen on monitor A (its readout hides), then press Win+Ctrl+Right to switch to an empty virtual desktop (create one first if needed). A's readout is back within about 1 s. (#8)
+
+### Taskbar space (Windows 10 only)
+Run `--demo` as in Task 5.
+- [ ] **Forced kill, then a clean run:** end the demo with `taskkill /f /im NetworkSpeedMonitor.exe`; the task list stays short. Start `--demo` again and exit it cleanly: the task list gets its full width back, up to the tray. (#9)
+- [ ] **Links toolbar:** while the demo runs, turn on Toolbars > Links and drag it to the left of the task buttons. Exit cleanly: the task list ends at the tray. (#9)
+- [ ] **Back-off:** add and remove tray icons and resize the taskbar quickly, many times. If the app backs off, the readout shrinks, drops its graph or hides within 1–2 s, and it never covers a task button. Once things settle, the task list ends before the readout. (#9)
+- [ ] **Fast display changes:** change the resolution or the scaling 3–4 times in quick succession. Each time, the task list ends before the readout straight away. (#9)
+- [ ] **Frozen Explorer (optional, needs a debugger):** attach a debugger such as WinDbg to `explorer.exe` and break into it, then exit the app with `taskkill /im NetworkSpeedMonitor.exe` (no `/f`) from a command prompt. The app exits at once instead of hanging. After you resume Explorer, the task list has its full width. (#8)
+
+### Report window
+- [ ] **Summary cards:** with Period = This month there are three cards, This month is outlined, and there's no fourth card. Today and This week: three cards, with the matching one outlined. Yesterday, Last month and a Custom range: four cards, with the fourth outlined. Check in light, dark and High Contrast. A custom range equal to today still shows four cards; that case was left as it was. (#28)
+- [ ] **Summary card widths:** with three cards showing, resize the window narrow and wide. The cards share the width evenly and never overlap. (#28)
+- [ ] **Maximized is remembered:** move the report, maximize it, close it and reopen it: it opens maximized. Restore it: it goes back to where you moved it. On Windows 10, repeat with the taskbar on the left; the restored window isn't shifted. (#20)
+- [ ] **Maximized across a restart:** maximize the report, minimize it, choose Exit from the overlay menu, start the app and open the report: it's maximized. Then maximize, restore, close and reopen it: it opens at its normal size. (#20)
+- [ ] **Opening the report:** start the exe a second time; the report comes up. With Settings… or Export CSV… open, left-click the readout; the report opens (or comes to the front) once that dialog closes. (#20)
+- [ ] **Row menu from the keyboard:** on the Adapters tab, select a row and press Shift+F10, then the Menu key. Each time the row's menu opens under the row's label. (#20)
+- [ ] **Dark checkbox:** in dark mode at 100% and 125% scaling, look at Show hidden adapters on the Adapters tab. The box is dark with a grey outline and is never white. Ticked, it's a blue box with a white tick. Hovering turns the outline blue, and tabbing to it puts the focus rectangle round the label. (#26)
+- [ ] **Light and High Contrast checkbox:** in light mode it's the system check box, and in High Contrast it's the system's High Contrast check box. (#26)
+- [ ] **Dark title bars:** set apps to Dark and open the report, then Rename… and Custom range…. Each title bar is dark. Switch to Light while each is open; its title bar turns light. Check on Windows 10 1809–1909 (which needs an older setting) as well as Windows 10 20H1 or later and Windows 11. (#21)
+- [ ] **Chart tooltip in dark mode:** set apps to Dark, open the Timeline and hover a bar. The tooltip is dark. It hasn't been checked on Windows 10 22H2: if it stays light, record the Windows build, because it needs a follow-up (custom-drawing the tooltip). (#29)
+- [ ] **Short hour at a clock change:** with a Debug build and a throwaway `--data-dir`, turn off "Set time automatically", set the time zone to (UTC+12:45) Chatham Islands and the date to 27 September 2026, when its clocks go forward at 2:45 AM. Open the report on Today and hover the 2 AM bar: its tooltip reads "2:00 AM – 2:45 AM". Put the date and time zone back afterwards. (#21)
+
+### Settings dialog
+- [ ] **About link:** in a build configured with `-DNSM_SOURCE_URL=<url>`, open Settings in dark mode. The Source code link is light blue (the accent colour), is underlined on hover and opens the URL. In light mode it's the system blue. (#22)
+- [ ] **No source URL:** in a build without `NSM_SOURCE_URL` there's no link row. OK and Cancel sit centred, one line below the About text, with no gap left for the link. (#22)
+- [ ] **Settings keeps the report's place:** with the report open, open Settings…, then move and resize the report. Change Units in Settings and press OK: the units change. Restart the app; the report opens at the new position and size. Repeat with the report maximized; after OK and a restart it opens maximized. (#22, #20)
+- [ ] **Dark check boxes:** in dark mode the unchecked boxes have a visible grey outline, and the check boxes and radio buttons otherwise look as before. (#22, #26)
+- [ ] **Rejected source URL (optional, build only):** configure with a URL that isn't a plain http(s) address, for example in PowerShell `cmake -S . -B build-bad '-DNSM_SOURCE_URL=https://example.com/a"b'`. The configure step stops with an error. (#22)
