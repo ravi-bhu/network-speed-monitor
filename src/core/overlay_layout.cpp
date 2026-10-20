@@ -21,9 +21,11 @@ bool IsHorizontal(Edge e) { return e == Edge::Bottom || e == Edge::Top; }
 OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, bool wantGraph) {
     OverlayPlacement p;
     const int margin = MulDiv(4, static_cast<int>(g.dpi), 96);
+    // An empty tray (none found) ends the free space at the taskbar's far end, as FallbackTray does.
+    const bool noTray = g.tray.Empty();
 
     if (IsHorizontal(g.edge)) {
-        const int right = g.tray.left - margin;
+        const int right = (noTray ? g.taskbar.right : g.tray.left) - margin;
         const int start = g.occupied.Empty() ? g.taskbar.left : g.occupied.right + margin;
         const int freeSpace = right - start;
         int width;
@@ -38,9 +40,11 @@ OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, b
         } else {
             return p;
         }
-        const int top = g.taskbar.top + (g.taskbar.Height() - s.height) / 2;
+        // Small taskbar buttons make the bar thinner than the readout: clamp to the bar, don't overhang.
+        const int height = std::min(s.height, g.taskbar.Height());
+        const int top = g.taskbar.top + (g.taskbar.Height() - height) / 2;
         p.visible = true;
-        p.rect = {right - width, top, right, top + s.height};
+        p.rect = {right - width, top, right, top + height};
         return p;
     }
 
@@ -50,9 +54,10 @@ OverlayPlacement PlaceOverlay(const TaskbarGeometry& g, const OverlaySizes& s, b
     if (compact && (s.compactWidth <= 0 || width < s.compactWidth)) return p;
     const bool graph = !compact && wantGraph && width >= s.fullWidth;
     const int height = graph ? 2 * s.height : s.height;
-    const int bottom = g.tray.top - margin;
+    const int bottom = (noTray ? g.taskbar.bottom : g.tray.top) - margin;
     const int top = bottom - height;
-    if (!g.occupied.Empty() && top < g.occupied.bottom + margin) return p;
+    const int limit = g.occupied.Empty() ? g.taskbar.top : g.occupied.bottom + margin;
+    if (top < limit) return p;
     p.visible = true;
     p.showGraph = graph;
     p.compact = compact;

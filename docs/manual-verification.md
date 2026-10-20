@@ -53,7 +53,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 125% scaling, dar
 - [ ] At 150% scaling (Settings > Display > Scale), the text and graph are crisp, with no blur or bitmap stretching, and the readout still fits the taskbar height.
 - [ ] Also check 100%, 175% and 200% scaling.
 - [ ] Open about 20 windows so the task buttons approach the tray. The graph drops first, then the readout hides, and it never overlaps a task button. Close windows again; the readout comes back with its graph.
-- [ ] With "Use small taskbar buttons" on (the taskbar is about 30 px at 100%), check whether the two lines still fit. The readout is 32 DIP tall and may be clipped or overhang; record what you see.
+- [ ] With "Use small taskbar buttons" on (the taskbar is about 30 px at 100%), check whether the two lines still fit. The readout is 32 DIP tall; `PlaceOverlay` clamps it to the bar's thickness (#4), so it no longer overhangs but the lines may be clipped by a pixel or two. Record what you see.
 - [ ] Clicking the readout never takes focus from the active window (the caret in an open editor keeps blinking).
 - [ ] After clicking an empty part of the taskbar, the readout is back in front within 1 s. The taskbar can briefly cover it; this is fully handled by Task 5's z-order work.
 - [ ] Task Manager > Details > "Memory (private working set)" for NetworkSpeedMonitor.exe is under 15 MB.

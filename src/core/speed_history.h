@@ -17,6 +17,8 @@ public:
     std::vector<double> Tx() const;
 
 private:
+    std::vector<double> Column(double Speed::*field) const;  // one field of every sample, oldest first
+
     size_t capacity_;
     size_t head_ = 0;  // index of the oldest sample once full
     std::vector<Speed> samples_;

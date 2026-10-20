@@ -25,19 +25,15 @@ double SpeedHistory::Max() const {
     return m;
 }
 
-std::vector<double> SpeedHistory::Rx() const {
-    std::vector<double> out;
-    out.reserve(samples_.size());
-    for (size_t i = 0; i < samples_.size(); ++i)
-        out.push_back(samples_[(head_ + i) % samples_.size()].rx);
-    return out;
-}
+std::vector<double> SpeedHistory::Rx() const { return Column(&Speed::rx); }
 
-std::vector<double> SpeedHistory::Tx() const {
+std::vector<double> SpeedHistory::Tx() const { return Column(&Speed::tx); }
+
+std::vector<double> SpeedHistory::Column(double Speed::*field) const {
     std::vector<double> out;
     out.reserve(samples_.size());
     for (size_t i = 0; i < samples_.size(); ++i)
-        out.push_back(samples_[(head_ + i) % samples_.size()].tx);
+        out.push_back(samples_[(head_ + i) % samples_.size()].*field);
     return out;
 }
 
