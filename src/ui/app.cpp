@@ -97,7 +97,7 @@ std::vector<AdapterMenuItem> BuildAdapterMenu(const std::vector<AdapterInfo>& pr
     for (const auto& a : present) {
         const AdapterMeta* meta = FindStored(stored, a.id);
         const bool pinned = !pinnedId.empty() && a.id == pinnedId;
-        if (meta && meta->hidden && !pinned) continue;
+        if ((!a.recognizable || (meta && meta->hidden)) && !pinned) continue;
         adapters.push_back(AdapterMenuItem{a.id, DisplayNameOf(a.id, present, stored), pinned});
         pinnedListed = pinnedListed || pinned;
     }
@@ -378,7 +378,7 @@ void App::RefreshNetwork() {
 }
 
 void App::RefreshNetworkOnce() {
-    adapters_ = EnumerateAdapters();
+    if (auto list = TryEnumerateAdapters()) adapters_ = std::move(*list);  // else keep the last list
     internetId_ = AdapterIdForLuid(adapters_, FindInternetInterface());
     networks_ = QueryAdapterNetworks();
     SaveNetworkMeta();

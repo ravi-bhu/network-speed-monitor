@@ -5,9 +5,7 @@
 
 namespace nsm {
 
-namespace {
-uint64_t LinkSpeed(ULONG64 v) { return v == (std::numeric_limits<ULONG64>::max)() ? 0 : v; }
-}  // namespace
+uint64_t LinkSpeed(ULONG64 reported) { return reported == (std::numeric_limits<ULONG64>::max)() ? 0 : reported; }
 
 bool IsListedInterface(ULONG ifType, TUNNEL_TYPE tunnelType) {
     if (ifType == IF_TYPE_SOFTWARE_LOOPBACK) return false;
@@ -18,35 +16,44 @@ bool IsListedInterface(ULONG ifType, TUNNEL_TYPE tunnelType) {
     return true;
 }
 
-AdapterKind ClassifyAdapter(ULONG ifType, bool hardwareInterface) {
-    if (ifType == IF_TYPE_IEEE80211) return hardwareInterface ? AdapterKind::WiFi : AdapterKind::Virtual;
-    if (ifType == IF_TYPE_ETHERNET_CSMACD)
-        return hardwareInterface ? AdapterKind::Ethernet : AdapterKind::Virtual;
-    if (ifType == IF_TYPE_PROP_VIRTUAL) return AdapterKind::Virtual;
+AdapterKind ClassifyAdapter(ULONG ifType, std::optional<bool> hardwareInterface) {
+    const bool hardware = hardwareInterface.value_or(true);
+    if (ifType == IF_TYPE_IEEE80211) return hardware ? AdapterKind::WiFi : AdapterKind::Virtual;
+    if (ifType == IF_TYPE_ETHERNET_CSMACD) return hardware ? AdapterKind::Ethernet : AdapterKind::Virtual;
+    // Transition tunnels never get here (IsListedInterface), so a tunnel is a VPN or similar.
+    if (ifType == IF_TYPE_PROP_VIRTUAL || ifType == IF_TYPE_PPP || ifType == IF_TYPE_TUNNEL)
+        return AdapterKind::Virtual;
     return AdapterKind::Other;
 }
 
-std::vector<AdapterInfo> EnumerateAdapters() {
-    std::vector<AdapterInfo> out;
-    const ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
-    ULONG size = 16 * 1024;
+bool IsRecognizableAdapter(ULONG ifType, std::optional<bool> hardwareInterface, bool up, bool hadTraffic) {
+    const bool wifiDirect = ifType == IF_TYPE_IEEE80211 && hardwareInterface.has_value() && !*hardwareInterface;
+    if (wifiDirect) return up;
+    return up || hadTraffic;
+}
+
+std::optional<std::vector<AdapterInfo>> TryEnumerateAdapters() {
     std::vector<BYTE> buf;
-    ULONG rc = ERROR_BUFFER_OVERFLOW;
-    for (int attempt = 0; attempt < 5 && rc == ERROR_BUFFER_OVERFLOW; ++attempt) {
-        buf.assign(size, 0);
-        rc = GetAdaptersAddresses(AF_UNSPEC, flags, nullptr,
-                                  reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data()), &size);
-    }
-    if (rc != NO_ERROR) return out;
+    const ULONG rc = CallWithGrowingBuffer(buf, 16 * 1024, 5, [](BYTE* data, ULONG* size) -> ULONG {
+        const ULONG flags = GAA_FLAG_SKIP_ANYCAST | GAA_FLAG_SKIP_MULTICAST | GAA_FLAG_SKIP_DNS_SERVER;
+        return GetAdaptersAddresses(AF_UNSPEC, flags, nullptr, reinterpret_cast<IP_ADAPTER_ADDRESSES*>(data), size);
+    });
+    std::vector<AdapterInfo> out;
+    if (rc == ERROR_NO_DATA) return out;  // no adapters at all
+    if (rc != NO_ERROR) return std::nullopt;
 
     for (auto* a = reinterpret_cast<IP_ADAPTER_ADDRESSES*>(buf.data()); a; a = a->Next) {
         if (!a->AdapterName) continue;
         if (!IsListedInterface(a->IfType, a->TunnelType)) continue;
 
-        bool hardware = false;
+        std::optional<bool> hardware;
+        bool hadTraffic = true;  // unknown: keep it listed
         MIB_IF_ROW2 row{};
         row.InterfaceLuid = a->Luid;
-        if (GetIfEntry2(&row) == NO_ERROR) hardware = row.InterfaceAndOperStatusFlags.HardwareInterface != 0;
+        if (GetIfEntry2(&row) == NO_ERROR) {
+            hardware = row.InterfaceAndOperStatusFlags.HardwareInterface != 0;
+            hadTraffic = row.InOctets != 0 || row.OutOctets != 0;
+        }
 
         AdapterInfo info{};
         int n = MultiByteToWideChar(CP_ACP, 0, a->AdapterName, -1, nullptr, 0);
@@ -62,10 +69,13 @@ std::vector<AdapterInfo> EnumerateAdapters() {
         info.kind = ClassifyAdapter(a->IfType, hardware);
         info.up = a->OperStatus == IfOperStatusUp;
         info.linkBitsPerSec = (std::max)(LinkSpeed(a->ReceiveLinkSpeed), LinkSpeed(a->TransmitLinkSpeed));
+        info.recognizable = IsRecognizableAdapter(a->IfType, hardware, info.up, hadTraffic);
         out.push_back(std::move(info));
     }
     return out;
 }
+
+std::vector<AdapterInfo> EnumerateAdapters() { return TryEnumerateAdapters().value_or(std::vector<AdapterInfo>{}); }
 
 std::optional<CounterReading> ReadCounters(NET_LUID luid, double nowSec) {
     MIB_IF_ROW2 row{};
