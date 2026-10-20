@@ -26,30 +26,38 @@ std::optional<NET_LUID> FindInternetInterface() {
     return luid;
 }
 
-NetChangeWatcher::~NetChangeWatcher() { Stop(); }
-
-void NetChangeWatcher::Notify() {
-    bool expected = false;
-    // If the post fails (window gone, queue full) clear the flag so later changes aren't suppressed.
-    if (pending_.compare_exchange_strong(expected, true) && !PostMessageW(hwnd_, msg_, 0, 0)) pending_ = false;
+void ChangeCoalescer::Arm(HWND notify, UINT msg) {
+    hwnd_ = notify;
+    msg_ = msg;
+    pending_ = false;
 }
 
+void ChangeCoalescer::Disarm() { hwnd_ = nullptr; }
+
+void ChangeCoalescer::Notify() {
+    if (!hwnd_) return;
+    bool expected = false;
+    // If the post fails (window gone, queue full) clear the flag so later changes aren't suppressed.
+    if (pending_.compare_exchange_strong(expected, true) && !post_(hwnd_, msg_, 0, 0)) pending_ = false;
+}
+
+NetChangeWatcher::~NetChangeWatcher() { Stop(); }
+
 void CALLBACK NetChangeWatcher::OnRouteChange(PVOID ctx, PMIB_IPFORWARD_ROW2, MIB_NOTIFICATION_TYPE) {
-    static_cast<NetChangeWatcher*>(ctx)->Notify();
+    static_cast<NetChangeWatcher*>(ctx)->coalescer_.Notify();
 }
 
 void CALLBACK NetChangeWatcher::OnInterfaceChange(PVOID ctx, PMIB_IPINTERFACE_ROW, MIB_NOTIFICATION_TYPE) {
-    static_cast<NetChangeWatcher*>(ctx)->Notify();
+    static_cast<NetChangeWatcher*>(ctx)->coalescer_.Notify();
 }
 
 bool NetChangeWatcher::Start(HWND notify, UINT msg) {
     Stop();
-    hwnd_ = notify;
-    msg_ = msg;
-    pending_ = false;
+    coalescer_.Arm(notify, msg);  // before registering, so callbacks see the target
     // initialNotification=FALSE: no spurious callback at registration.
     if (NotifyRouteChange2(AF_UNSPEC, &OnRouteChange, this, FALSE, &routeHandle_) != NO_ERROR) {
         routeHandle_ = nullptr;
+        Stop();
         return false;
     }
     if (NotifyIpInterfaceChange(AF_UNSPEC, &OnInterfaceChange, this, FALSE, &ifHandle_) != NO_ERROR) {
@@ -70,8 +78,7 @@ void NetChangeWatcher::Stop() {
         CancelMibChangeNotify2(ifHandle_);
         ifHandle_ = nullptr;
     }
+    coalescer_.Disarm();  // after the cancels, so no callback is reading the target
 }
-
-void NetChangeWatcher::Acknowledge() { pending_ = false; }
 
 }  // namespace nsm
