@@ -70,6 +70,30 @@ TEST_CASE("FitReportRect centres the default size when nothing was saved") {
     CHECK(Same(FitReportRect(std::nullopt, kWork, kDefault, kMin), RECT{485, 170, 1435, 870}));
 }
 
+TEST_CASE("WorkspaceToScreen shifts a restore rect by the work area's offset on its monitor") {
+    // Taskbar on the left (or top) of the monitor: workspace (0, 0) is the work area's corner.
+    CHECK(Same(WorkspaceToScreen(RECT{0, 0, 800, 600}, RECT{0, 0, 1920, 1080}, RECT{48, 0, 1920, 1080}),
+               RECT{48, 0, 848, 600}));
+    CHECK(Same(WorkspaceToScreen(RECT{10, 20, 810, 620}, RECT{0, 0, 1920, 1080}, RECT{0, 40, 1920, 1080}),
+               RECT{10, 60, 810, 660}));
+    // Taskbar at the bottom: the two systems agree.
+    CHECK(Same(WorkspaceToScreen(RECT{100, 100, 900, 700}, RECT{0, 0, 1920, 1080}, RECT{0, 0, 1920, 1040}),
+               RECT{100, 100, 900, 700}));
+    // A second monitor left of the primary, its taskbar on the left too.
+    CHECK(Same(WorkspaceToScreen(RECT{-1200, 0, -400, 600}, RECT{-1280, 0, 0, 1024}, RECT{-1232, 0, 0, 1024}),
+               RECT{-1152, 0, -352, 600}));
+}
+
+TEST_CASE("IsKeyboardContextMenu: Shift+F10 and the menu key send the point (-1, -1)") {
+    // On 64-bit Windows the lParam is 0xFFFFFFFF, not -1, so only the decoded point identifies it.
+    CHECK(IsKeyboardContextMenu(MAKELPARAM(-1, -1)));
+    CHECK(IsKeyboardContextMenu(static_cast<LPARAM>(-1)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(0, 0)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(-1, 5)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(5, -1)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(-2, -1)));  // a click on a monitor left of the primary
+}
+
 TEST_CASE("NextSort toggles the clicked column and starts new columns in their natural direction") {
     TableSort s;  // default: Total, largest first
     CHECK(s.column == TableColumn::Total);
@@ -269,7 +293,11 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         int queries = 0;
         std::vector<RECT> bounds;
         w.beforeQuery = [&] { ++queries; };
-        w.onBoundsChanged = [&](RECT r) { bounds.push_back(r); };
+        std::vector<bool> maximized;
+        w.onBoundsChanged = [&](RECT r, bool m) {
+            bounds.push_back(r);
+            maximized.push_back(m);
+        };
         w.SetThemeOverride(ReportTheme::Light);
         // Place the window inside this machine's work area: CI runners have small (1024x768) screens and the
         // report clamps a saved rect that doesn't fit, which is correct but would break exact-rect checks.
@@ -334,6 +362,23 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         RECT reopened{};
         GetWindowRect(hwnd, &reopened);
         if (fits) CHECK(Same(reopened, movedActual));
+        CHECK_FALSE(maximized.back());
+
+        // Closed maximized: the restored bounds are kept, and it reopens maximized over them.
+        ShowWindow(hwnd, SW_MAXIMIZE);
         w.Close();
+        CHECK(maximized.back());
+        CHECK(Same(bounds.back(), reopened));
+        w.Show(0);
+        REQUIRE(w.IsOpen());
+        hwnd = FindWindowW(L"NetworkSpeedMonitor.Report", nullptr);
+        REQUIRE(hwnd);
+        CHECK(IsZoomed(hwnd));
+        ShowWindow(hwnd, SW_RESTORE);
+        RECT restored{};
+        GetWindowRect(hwnd, &restored);
+        CHECK(Same(restored, reopened));
+        w.Close();
+        CHECK_FALSE(maximized.back());
     }
 }
