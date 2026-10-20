@@ -125,3 +125,19 @@ TEST_CASE("TaskListReservation: a denied overlay change is applied by a later ve
     CHECK(!r.Observe(kShrunk, 500));                             // still backing off
     CHECK(r.Observe(kShrunk, 1100) == Rect{2, 0, 1245, 50});    // retried though nothing moved
 }
+
+TEST_CASE("TaskListReservation: a write skipped for a hung Explorer is owed, not mistaken for a new layout (#8)") {
+    TaskListReservation r;
+    r.Attach(kNatural);
+    REQUIRE(r.SetOverlay(kOverlay, Edge::Bottom, 5, kNatural, 0) == kShrunk);
+    r.Unapplied(kNatural);                        // Explorer was hung: nothing written
+    CHECK(!r.RestoreTarget(kNatural));            // nothing of ours to undo
+    CHECK(r.Observe(kNatural, 100) == kShrunk);   // retried; kNatural stays the natural size
+    CHECK(r.RestoreTarget(kShrunk) == kNatural);
+    // A skipped shrink after an earlier one landed: the task list keeps our first shrink.
+    const Rect wider{1250, 5, 1466, 45};
+    REQUIRE(r.SetOverlay(wider, Edge::Bottom, 5, kShrunk, 200) == Rect{2, 0, 1245, 50});
+    r.Unapplied(kShrunk);
+    CHECK(r.RestoreTarget(kShrunk) == kNatural);  // still ours to restore
+    CHECK(r.Observe(kShrunk, 300) == Rect{2, 0, 1245, 50});
+}

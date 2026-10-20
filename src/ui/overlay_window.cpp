@@ -75,9 +75,15 @@ void OverlayWindow::Hide() {
     if (hwnd_ && IsWindowVisible(hwnd_)) ShowWindow(hwnd_, SW_HIDE);
 }
 
-void OverlayWindow::RaiseTopmost() {
-    if (hwnd_ && IsWindowVisible(hwnd_))
-        SetWindowPos(hwnd_, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+void OverlayWindow::RaiseTopmost(HWND taskbar) {
+    if (!hwnd_ || !IsWindowVisible(hwnd_)) return;
+    // Right above the taskbar rather than at the top of the band: Explorer's menus, jump lists
+    // and tray tooltips open over the taskbar, and they stay over the overlay too.
+    HWND after = taskbar ? GetWindow(taskbar, GW_HWNDPREV) : nullptr;
+    if (after == hwnd_) return;  // already there
+    // Nothing above the taskbar, or the taskbar isn't topmost: the top of the band, as before.
+    if (!after || !(GetWindowLongW(after, GWL_EXSTYLE) & WS_EX_TOPMOST)) after = HWND_TOPMOST;
+    SetWindowPos(hwnd_, after, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 }
 
 bool OverlayWindow::Visible() const { return hwnd_ && IsWindowVisible(hwnd_); }

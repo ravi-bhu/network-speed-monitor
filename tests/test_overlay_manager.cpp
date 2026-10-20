@@ -1,3 +1,5 @@
+#include <cstdint>
+
 #include "doctest.h"
 
 #include "ui/overlay_manager.h"
@@ -55,4 +57,15 @@ TEST_CASE("PlanTick: rebuild when Explorer changed; probes on their cadence") {
     const TickPlan noBars = PlanTick(false, false, false, 2, true, false);
     CHECK(noBars.lightProbe);
     CHECK(!noBars.followTaskbars);
+}
+
+TEST_CASE("SameTaskbars: the order of a probe doesn't matter (#8)") {
+    const auto fake = [](uintptr_t v) { return reinterpret_cast<HWND>(v); };
+    const HWND a = fake(0x10), b = fake(0x20), c = fake(0x30);
+    CHECK(SameTaskbars({a, b, c}, {a, b, c}));
+    CHECK(SameTaskbars({a, b, c}, {a, c, b}));  // clicking a secondary taskbar reorders the z-order enumeration
+    CHECK(SameTaskbars({}, {}));
+    CHECK(!SameTaskbars({a, b}, {a, b, c}));  // one appeared
+    CHECK(!SameTaskbars({a, b, c}, {a, c}));  // one went away
+    CHECK(!SameTaskbars({a, b}, {a, c}));     // one replaced
 }

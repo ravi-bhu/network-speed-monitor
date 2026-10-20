@@ -67,6 +67,12 @@ std::optional<Rect> TaskListReservation::RestoreTarget(const Rect& current) cons
     return natural_;
 }
 
+void TaskListReservation::Unapplied(const Rect& current) {
+    if (!attached_) return;
+    applied_ = current;  // so Observe doesn't take it for a new layout of Explorer's
+    dirty_ = true;
+}
+
 std::optional<Rect> TaskListReservation::Step(const Rect& current, uint64_t nowMs) {
     const Rect target = ReservedTaskListRect(natural_, overlay_, edge_, margin_);
     if (target == current) {
@@ -115,9 +121,7 @@ bool TaskbarSpaceWin10::OnLocationChange(HWND hwnd) {
         return false;
     }
     auto target = state_.Observe(CurrentInRebar(), GetTickCount64());
-    if (!target) return false;
-    Write(*target);
-    return true;
+    return target && Write(*target);
 }
 
 void TaskbarSpaceWin10::Restore() {
@@ -126,24 +130,33 @@ void TaskbarSpaceWin10::Restore() {
         return;
     }
     if (taskSw_ && IsWindow(taskSw_)) {
-        if (auto target = state_.RestoreTarget(CurrentInRebar())) Write(*target);
+        if (auto target = state_.RestoreTarget(CurrentInRebar())) Write(*target, true);
     }
     state_.Detach();
     rebar_ = taskSw_ = nullptr;
 }
 
-void TaskbarSpaceWin10::Write(const Rect& r) {
-    // Synchronous on purpose: the location-change events that follow must see the final rect,
-    // or an in-flight resize could be mistaken for Explorer's natural layout. It pumps sent
-    // messages while Explorer handles it, hence the writing_ guard.
+bool TaskbarSpaceWin10::Write(const Rect& r, bool restore) {
+    // A hung Explorer would block a synchronous SetWindowPos, and with it our UI thread (and
+    // WM_ENDSESSION). Skip a resize, which a later check retries; post the restore, which then
+    // lands when Explorer recovers, after anything we wrote before.
+    const bool hung = IsHungAppWindow(GetAncestor(taskSw_, GA_ROOT)) != FALSE;
+    if (hung && !restore) {
+        state_.Unapplied(CurrentInRebar());
+        return false;
+    }
+    // Otherwise synchronous on purpose: the location-change events that follow must see the
+    // final rect, or an in-flight resize could be mistaken for Explorer's natural layout. It
+    // pumps sent messages while Explorer handles it, hence the writing_ guard.
     writing_ = true;
     SetWindowPos(taskSw_, nullptr, r.left, r.top, r.Width(), r.Height(),
-                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER);
+                 SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOOWNERZORDER | (hung ? SWP_ASYNCWINDOWPOS : 0));
     writing_ = false;
     if (restoreAfterWrite_) {
         restoreAfterWrite_ = false;
         Restore();
     }
+    return true;
 }
 
 Rect TaskbarSpaceWin10::CurrentInRebar() const {
