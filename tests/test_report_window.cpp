@@ -111,6 +111,16 @@ TEST_CASE("DefaultCsvName uses the local date") {
     CHECK(DefaultCsvName(LocalDate{2026, 10, 19}) == L"network-usage-2026-10-19.csv");
 }
 
+TEST_CASE("FixedSummaryCard: Today, This week and This month are already on the Summary") {
+    CHECK(FixedSummaryCard(Period::Today) == 0);
+    CHECK(FixedSummaryCard(Period::ThisWeek) == 1);
+    CHECK(FixedSummaryCard(Period::ThisMonth) == 2);
+    for (Period p : {Period::Yesterday, Period::LastWeek, Period::LastMonth, Period::Last30Days, Period::ThisYear,
+                     Period::AllTime, Period::Custom}) {
+        CHECK(FixedSummaryCard(p) == -1);
+    }
+}
+
 TEST_CASE("FillPlaceholders replaces each %s in turn and never rescans inserted text") {
     CHECK(FillPlaceholders(L"↓ %s · ↑ %s", {L"1 GB", L"2 MB"}) == L"↓ 1 GB · ↑ 2 MB");
     CHECK(FillPlaceholders(L"Delete “%s”?", {L"100% %s"}) == L"Delete “100% %s”?");
