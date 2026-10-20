@@ -1,5 +1,7 @@
 #include "core/sampler.h"
 
+#include <unordered_set>
+
 namespace nsm {
 
 TickResult Sampler::Tick(const std::vector<AdapterSample>& samples,
@@ -8,10 +10,11 @@ TickResult Sampler::Tick(const std::vector<AdapterSample>& samples,
     TickResult out;
 
     // Drop state for adapters that are no longer present so they restart fresh.
+    std::unordered_set<std::wstring> present;
+    present.reserve(samples.size());
+    for (const auto& s : samples) present.insert(s.adapterId);
     for (auto it = trackers_.begin(); it != trackers_.end();) {
-        bool present = false;
-        for (const auto& s : samples) if (s.adapterId == it->first) { present = true; break; }
-        if (present) ++it;
+        if (present.contains(it->first)) ++it;
         else { lastSpeed_.erase(it->first); it = trackers_.erase(it); }
     }
 

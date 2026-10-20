@@ -53,3 +53,25 @@ TEST_CASE("Sampler: adapter that disappears and returns does not reuse its old b
     CHECK(back.perAdapter.empty()); CHECK(!back.internet);
     REQUIRE(back.display); CHECK(back.display->rx == 0);  // stale lastSpeed would be 5000
 }
+TEST_CASE("Sampler: remembered display speed is kept per adapter") {
+    Sampler s; s.Tick({S(L"A",0,0,0), S(L"B",0,0,0)}, L"A", L"A");
+    s.Tick({S(L"A",4000,0,1), S(L"B",2000,0,1)}, L"A", L"A");
+    auto gapA = s.Tick({S(L"A",8000,0,100), S(L"B",4000,0,100)}, L"A", L"A");   // both adapters gap
+    REQUIRE(gapA.display); CHECK(gapA.display->rx == doctest::Approx(4000));
+    auto gapB = s.Tick({S(L"A",8000,0,200), S(L"B",4000,0,200)}, L"A", L"B");   // switch display during a gap
+    REQUIRE(gapB.display); CHECK(gapB.display->rx == doctest::Approx(2000));      // B's own value, not A's
+}
+TEST_CASE("Sampler: switching display adapter shows the new adapter's speed") {
+    Sampler s; s.Tick({S(L"A",0,0,0), S(L"B",0,0,0)}, L"A", L"A");
+    auto r1 = s.Tick({S(L"A",4000,0,1), S(L"B",2000,0,1)}, L"A", L"A");
+    auto r2 = s.Tick({S(L"A",8000,0,2), S(L"B",3000,0,2)}, L"A", L"B");
+    REQUIRE(r1.display); CHECK(r1.display->rx == doctest::Approx(4000));
+    REQUIRE(r2.display); CHECK(r2.display->rx == doctest::Approx(1000));
+}
+TEST_CASE("Sampler: internet adapter present with a zero delta gives no internet delta") {
+    Sampler s; s.Tick({S(L"A",0,0,0), S(L"B",0,0,0)}, L"A", L"A");
+    auto r = s.Tick({S(L"A",0,0,1), S(L"B",500,0,1)}, L"A", L"A");
+    CHECK(!r.internet);
+    REQUIRE(r.perAdapter.size() == 1); CHECK(r.perAdapter[0].adapterId == L"B");
+    REQUIRE(r.display); CHECK(r.display->rx == 0);
+}
