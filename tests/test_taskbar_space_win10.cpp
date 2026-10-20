@@ -125,3 +125,83 @@ TEST_CASE("TaskListReservation: a denied overlay change is applied by a later ve
     CHECK(!r.Observe(kShrunk, 500));                             // still backing off
     CHECK(r.Observe(kShrunk, 1100) == Rect{2, 0, 1245, 50});    // retried though nothing moved
 }
+
+TEST_CASE("ReapplyLimiter::Reset forgets the burst and any back-off") {
+    ReapplyLimiter limiter(1, 2000, 10000);
+    CHECK(limiter.Allow(0));
+    CHECK(!limiter.Allow(100));  // backing off until 10100
+    limiter.Reset();
+    CHECK(limiter.Allow(200));
+}
+
+TEST_CASE("TaskListReservation: InEffect while the wanted rect holds, Owed while one is refused") {
+    TaskListReservation r(ReapplyLimiter(1, 2000, 1000));
+    CHECK(!r.InEffect());
+    CHECK(!r.Owed());
+    r.Attach(kNatural);
+    CHECK(r.InEffect());
+    REQUIRE(r.SetOverlay(kOverlay, Edge::Bottom, 5, kNatural, 0) == kShrunk);
+    CHECK(r.InEffect());
+    CHECK(!r.Observe(kNatural, 100));  // Explorer undid it and the limiter refuses the re-apply
+    CHECK(r.Owed());
+    CHECK(!r.InEffect());              // the task list has its natural width: measure its buttons
+    CHECK(r.Observe(kNatural, 1100) == kShrunk);
+    CHECK(r.InEffect());
+    CHECK(!r.Owed());
+    r.Detach();
+    CHECK(!r.InEffect());
+    CHECK(!r.Owed());
+}
+
+TEST_CASE("TaskListReservation: re-attaching starts the limiter afresh") {
+    TaskListReservation r(ReapplyLimiter(1, 2000, 10000));
+    r.Attach(kNatural);
+    REQUIRE(r.SetOverlay(kOverlay, Edge::Bottom, 5, kNatural, 0) == kShrunk);
+    // A display change rebuilds: restore, re-attach and reserve again within the same 2 s.
+    r.Attach(kNatural);
+    CHECK(r.SetOverlay(kOverlay, Edge::Bottom, 5, kNatural, 100) == kShrunk);
+    CHECK(r.InEffect());
+}
+
+TEST_CASE("TaskListReservation: our shrunk rect moved by Explorer keeps the natural far end") {
+    TaskListReservation r;
+    r.Attach(kNatural);
+    REQUIRE(r.SetOverlay(kOverlay, Edge::Bottom, 5, kNatural, 0) == kShrunk);
+    // A band before the task list grew: Explorer moved its near edge but kept our far end.
+    const Rect nearMoved{40, 0, 1302, 50};
+    CHECK(!r.Observe(nearMoved, 100));  // still ends before the overlay
+    CHECK(r.RestoreTarget(nearMoved) == Rect{40, 0, 1473, 50});
+    // Moved to another row, same size.
+    const Rect otherRow{40, 50, 1302, 100};
+    CHECK(!r.Observe(otherRow, 200));
+    CHECK(r.RestoreTarget(otherRow) == Rect{40, 50, 1473, 100});
+    // Shifted along the taskbar, same length: shrink it again, restore to the old far end.
+    const Rect shifted{80, 50, 1342, 100};
+    CHECK(r.Observe(shifted, 300) == Rect{80, 50, 1302, 100});
+    CHECK(r.RestoreTarget(Rect{80, 50, 1302, 100}) == Rect{80, 50, 1473, 100});
+}
+
+TEST_CASE("TaskListReservation: a moved shrunk rect on a vertical taskbar keeps the natural bottom") {
+    const Rect natural{0, 200, 62, 950};
+    TaskListReservation r;
+    r.Attach(natural);
+    REQUIRE(r.SetOverlay({4, 900, 58, 940}, Edge::Left, 4, natural, 0) == Rect{0, 200, 62, 896});
+    const Rect nearMoved{0, 260, 62, 896};
+    CHECK(!r.Observe(nearMoved, 100));
+    CHECK(r.RestoreTarget(nearMoved) == Rect{0, 260, 62, 950});
+}
+
+TEST_CASE("TaskListReservation: a task list left shrunk by a killed instance is restored") {
+    TaskListReservation r;
+    r.Attach(kShrunk);  // ends exactly where this overlay's reservation would end it
+    CHECK(!r.SetOverlay(kOverlay, Edge::Bottom, 5, kShrunk, 0));  // already shrunk: no write
+    CHECK(r.InEffect());
+    // The free space ends at the tray, a margin after the overlay (where PlaceOverlay puts it).
+    CHECK(r.RestoreTarget(kShrunk) == Rect{2, 0, 1471, 50});
+    // A natural layout that merely clears the overlay is left as it is.
+    TaskListReservation clear;
+    const Rect narrow{2, 0, 1200, 50};
+    clear.Attach(narrow);
+    CHECK(!clear.SetOverlay(kOverlay, Edge::Bottom, 5, narrow, 0));
+    CHECK(!clear.RestoreTarget(narrow));
+}

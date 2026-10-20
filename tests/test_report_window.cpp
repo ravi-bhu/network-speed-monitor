@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <windowsx.h>
 
 #include <ctime>
 #include <filesystem>
@@ -72,6 +73,30 @@ TEST_CASE("FitReportRect centres the default size when nothing was saved") {
     CHECK(Same(FitReportRect(std::nullopt, kWork, kDefault, kMin), RECT{485, 170, 1435, 870}));
 }
 
+TEST_CASE("WorkspaceToScreen shifts a restore rect by the work area's offset on its monitor") {
+    // Taskbar on the left (or top) of the monitor: workspace (0, 0) is the work area's corner.
+    CHECK(Same(WorkspaceToScreen(RECT{0, 0, 800, 600}, RECT{0, 0, 1920, 1080}, RECT{48, 0, 1920, 1080}),
+               RECT{48, 0, 848, 600}));
+    CHECK(Same(WorkspaceToScreen(RECT{10, 20, 810, 620}, RECT{0, 0, 1920, 1080}, RECT{0, 40, 1920, 1080}),
+               RECT{10, 60, 810, 660}));
+    // Taskbar at the bottom: the two systems agree.
+    CHECK(Same(WorkspaceToScreen(RECT{100, 100, 900, 700}, RECT{0, 0, 1920, 1080}, RECT{0, 0, 1920, 1040}),
+               RECT{100, 100, 900, 700}));
+    // A second monitor left of the primary, its taskbar on the left too.
+    CHECK(Same(WorkspaceToScreen(RECT{-1200, 0, -400, 600}, RECT{-1280, 0, 0, 1024}, RECT{-1232, 0, 0, 1024}),
+               RECT{-1152, 0, -352, 600}));
+}
+
+TEST_CASE("IsKeyboardContextMenu: Shift+F10 and the menu key send the point (-1, -1)") {
+    // On 64-bit Windows the lParam is 0xFFFFFFFF, not -1, so only the decoded point identifies it.
+    CHECK(IsKeyboardContextMenu(MAKELPARAM(-1, -1)));
+    CHECK(IsKeyboardContextMenu(static_cast<LPARAM>(-1)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(0, 0)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(-1, 5)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(5, -1)));
+    CHECK_FALSE(IsKeyboardContextMenu(MAKELPARAM(-2, -1)));  // a click on a monitor left of the primary
+}
+
 TEST_CASE("NextSort toggles the clicked column and starts new columns in their natural direction") {
     TableSort s;  // default: Total, largest first
     CHECK(s.column == TableColumn::Total);
@@ -111,6 +136,16 @@ TEST_CASE("SortRows orders by the chosen column in either direction") {
 TEST_CASE("DefaultCsvName uses the local date") {
     CHECK(DefaultCsvName(LocalDate{2026, 3, 7}) == L"network-usage-2026-03-07.csv");
     CHECK(DefaultCsvName(LocalDate{2026, 10, 19}) == L"network-usage-2026-10-19.csv");
+}
+
+TEST_CASE("FixedSummaryCard: Today, This week and This month are already on the Summary") {
+    CHECK(FixedSummaryCard(Period::Today) == 0);
+    CHECK(FixedSummaryCard(Period::ThisWeek) == 1);
+    CHECK(FixedSummaryCard(Period::ThisMonth) == 2);
+    for (Period p : {Period::Yesterday, Period::LastWeek, Period::LastMonth, Period::Last30Days, Period::ThisYear,
+                     Period::AllTime, Period::Custom}) {
+        CHECK(FixedSummaryCard(p) == -1);
+    }
 }
 
 TEST_CASE("FillPlaceholders replaces each %s in turn and never rescans inserted text") {
@@ -421,7 +456,11 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         int queries = 0;
         std::vector<RECT> bounds;
         w.beforeQuery = [&] { ++queries; };
-        w.onBoundsChanged = [&](RECT r) { bounds.push_back(r); };
+        std::vector<bool> maximized;
+        w.onBoundsChanged = [&](RECT r, bool m) {
+            bounds.push_back(r);
+            maximized.push_back(m);
+        };
         w.SetThemeOverride(ReportTheme::Light);
         // Place the window inside this machine's work area: CI runners have small (1024x768) screens and the
         // report clamps a saved rect that doesn't fit, which is correct but would break exact-rect checks.
@@ -486,6 +525,128 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         RECT reopened{};
         GetWindowRect(hwnd, &reopened);
         if (fits) CHECK(Same(reopened, movedActual));
+        CHECK_FALSE(maximized.back());
+
+        // Closed maximized: the restored bounds are kept, and it reopens maximized over them.
+        ShowWindow(hwnd, SW_MAXIMIZE);
         w.Close();
+        CHECK(maximized.back());
+        CHECK(Same(bounds.back(), reopened));
+        w.Show(0);
+        REQUIRE(w.IsOpen());
+        hwnd = FindWindowW(L"NetworkSpeedMonitor.Report", nullptr);
+        REQUIRE(hwnd);
+        CHECK(IsZoomed(hwnd));
+        ShowWindow(hwnd, SW_RESTORE);
+        RECT restored{};
+        GetWindowRect(hwnd, &restored);
+        CHECK(Same(restored, reopened));
+        w.Close();
+        CHECK_FALSE(maximized.back());
     }
+}
+
+namespace {
+
+struct ToggleDraw {
+    LRESULT result = 0;
+    COLORREF inside = CLR_INVALID;  // inside the check box, clear of the tick
+};
+
+// Sends the check box's CDDS_PREPAINT custom draw through `send`, into a memory DC the size of the box.
+template <class Send>
+ToggleDraw PaintToggle(HWND button, Send send) {
+    RECT rc{};
+    GetClientRect(button, &rc);
+    REQUIRE(rc.right > 0);
+    REQUIRE(rc.bottom > 0);
+    HDC screen = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(screen);
+    HBITMAP bitmap = CreateCompatibleBitmap(screen, rc.right, rc.bottom);
+    ReleaseDC(nullptr, screen);
+    HGDIOBJ old = SelectObject(dc, bitmap);
+    NMCUSTOMDRAW cd{};
+    cd.hdr.hwndFrom = button;
+    cd.hdr.idFrom = static_cast<UINT_PTR>(GetDlgCtrlID(button));
+    cd.hdr.code = NM_CUSTOMDRAW;
+    cd.dwDrawStage = CDDS_PREPAINT;
+    cd.hdc = dc;
+    cd.rc = rc;
+    ToggleDraw out;
+    out.result = send(cd);
+    const int dpi = static_cast<int>(GetDpiForWindow(button));
+    const int size = MulDiv(13, dpi, 96), inset = MulDiv(3, dpi, 96);
+    out.inside = GetPixel(dc, rc.left + inset, rc.top + (rc.bottom - rc.top - size) / 2 + inset);
+    SelectObject(dc, old);
+    DeleteObject(bitmap);
+    DeleteDC(dc);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("Dark report draws Show hidden adapters as the Settings dialog's box, not the white theme glyph" *
+          doctest::test_suite("integration")) {
+    TempStore t;
+    ReportWindow w(GetModuleHandleW(nullptr), t.store);
+    auto open = [&](ReportTheme theme) {  // the "Show hidden adapters" box
+        w.SetThemeOverride(theme);
+        w.Show(2);
+        REQUIRE(w.IsOpen());
+        HWND hwnd = FindWindowW(L"NetworkSpeedMonitor.Report", nullptr);
+        REQUIRE(hwnd);
+        HWND box = FindWindowExW(hwnd, nullptr, WC_BUTTONW, LoadStr(IDS_SHOW_HIDDEN).c_str());
+        REQUIRE(box);
+        return box;
+    };
+    auto viaReport = [](NMCUSTOMDRAW& cd) {
+        return SendMessageW(GetParent(cd.hdr.hwndFrom), WM_NOTIFY, cd.hdr.idFrom, reinterpret_cast<LPARAM>(&cd));
+    };
+    const ReportPalette dark = PaletteFor(ReportTheme::Dark);
+
+    HWND box = open(ReportTheme::Dark);
+    Button_SetCheck(box, BST_UNCHECKED);
+    ToggleDraw drawn = PaintToggle(box, viaReport);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.surface);  // an empty dark box, not a white square
+    Button_SetCheck(box, BST_CHECKED);
+    drawn = PaintToggle(box, viaReport);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.accent);
+    w.Close();
+
+    // High Contrast keeps the system-drawn control.
+    box = open(ReportTheme::HighContrast);
+    CHECK(PaintToggle(box, viaReport).result == CDRF_DODEFAULT);
+    w.Close();
+}
+
+TEST_CASE("DrawDarkToggle draws an outlined box, accent-filled when checked, and leaves push buttons alone" *
+          doctest::test_suite("integration")) {
+    const ReportPalette dark = PaletteFor(ReportTheme::Dark);
+    HBRUSH background = CreateSolidBrush(dark.background);
+    auto direct = [&](NMCUSTOMDRAW& cd) { return DrawDarkToggle(&cd, dark, background); };
+    const HINSTANCE module = GetModuleHandleW(nullptr);
+    HWND parent = CreateWindowExW(0, WC_STATICW, L"", WS_POPUP, 0, 0, 200, 60, nullptr, nullptr, module, nullptr);
+    REQUIRE(parent);
+    auto button = [&](const wchar_t* text, DWORD style, int y) {
+        return CreateWindowExW(0, WC_BUTTONW, text, WS_CHILD | WS_VISIBLE | style, 0, y, 200, 24, parent, nullptr,
+                               module, nullptr);
+    };
+    HWND box = button(L"Box", BS_AUTOCHECKBOX, 0);
+    HWND push = button(L"Push", BS_PUSHBUTTON, 30);
+    REQUIRE(box);
+    REQUIRE(push);
+
+    ToggleDraw drawn = PaintToggle(box, direct);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.surface);
+    Button_SetCheck(box, BST_CHECKED);
+    drawn = PaintToggle(box, direct);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.accent);
+    CHECK(PaintToggle(push, direct).result == CDRF_DODEFAULT);
+
+    DestroyWindow(parent);
+    DeleteObject(background);
 }

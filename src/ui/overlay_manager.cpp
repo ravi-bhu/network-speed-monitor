@@ -1,6 +1,7 @@
 #include "ui/overlay_manager.h"
 
 #include <commctrl.h>
+#include <uxtheme.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -94,6 +95,10 @@ bool IsShellFlyoutClass(std::wstring_view cls) {
 
 bool WantsOverlay(bool primary, bool trayFound, bool allTaskbars) {
     return primary ? trayFound : allTaskbars;
+}
+
+const wchar_t* OverlayTooltipTheme(bool taskbarLight, bool highContrast) {
+    return taskbarLight || highContrast ? nullptr : L"DarkMode_Explorer";
 }
 
 OverlayManager::OverlayManager() = default;
@@ -215,6 +220,7 @@ bool OverlayManager::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SETTINGCHANGE:
             if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
                 light_ = IsTaskbarLight();
+                for (const auto& bar : bars_) ApplyTooltipTheme(*bar);
                 Run(kShell);  // any work renders
             }
             return false;
@@ -272,7 +278,13 @@ void OverlayManager::Execute(unsigned w) {
     }
     // The periodic probes double as a check that the Win10 reservation is still in place (a
     // GetWindowRect unless Explorer changed it), in case a location event was missed.
-    if (w & (kSpace | kFullProbe | kLightProbe)) space_.OnLocationChange(space_.TaskSwitch());
+    if (w & (kSpace | kFullProbe | kLightProbe)) {
+        const bool wasInEffect = space_.InEffect();
+        space_.OnLocationChange(space_.TaskSwitch());
+        // The re-apply was refused (back-off): the task list is at its natural size, so measure
+        // its buttons now rather than at the next periodic probe.
+        if (wasInEffect && !space_.InEffect() && AnyShown()) w |= kFullProbe;
+    }
     if (!initialized_) return;  // every step below can pump messages and so meet a Shutdown
     if (w & kFullProbe) {
         Probe(FullProbeMode());
@@ -295,6 +307,7 @@ void OverlayManager::Execute(unsigned w) {
 
 void OverlayManager::Rebuild() {
     DestroyBars();
+    if (!initialized_) return;  // Shutdown ran while the restore's write pumped messages
     taskbar_ = FindWindowW(L"Shell_TrayWnd", nullptr);
     ticksSinceProbe_ = 0;
     if (!taskbar_) return;
@@ -322,6 +335,7 @@ void OverlayManager::Rebuild() {
     locationHook_ = SetWinEventHook(EVENT_OBJECT_LOCATIONCHANGE, EVENT_OBJECT_LOCATIONCHANGE, nullptr,
                                     &OverlayManager::OnWinEvent, explorerPid, 0, WINEVENT_OUTOFCONTEXT);
     Place();
+    if (!initialized_) return;  // Shutdown ran during the reservation's write
     EvaluateShell();
     Render();
     probeDue_ = false;
@@ -338,8 +352,9 @@ void OverlayManager::DestroyBars() {
 }
 
 OccupiedProbe OverlayManager::FullProbeMode() const {
-    // With the Win10 reservation the task list can't reach the overlay: no UIA for the primary.
-    return space_.Attached() ? OccupiedProbe::SecondaryOnly : OccupiedProbe::All;
+    // With the Win10 reservation in effect the task list can't reach the overlay: no UIA for the
+    // primary. While it is owed (back-off) the task list may be at its natural size: measure it.
+    return space_.InEffect() ? OccupiedProbe::SecondaryOnly : OccupiedProbe::All;
 }
 
 void OverlayManager::Probe(OccupiedProbe occupied) {
@@ -362,7 +377,7 @@ void OverlayManager::Probe(OccupiedProbe occupied) {
         Bar& bar = *bars_[i];
         const bool measured = occupied == OccupiedProbe::All ||
                               (occupied == OccupiedProbe::SecondaryOnly && !bar.info.primary);
-        const bool reserved = bar.info.primary && space_.Attached();
+        const bool reserved = bar.info.primary && space_.InEffect();
         if (!measured && !reserved) {  // keep the last UIA extent, moved with the taskbar
             const TaskbarGeometry& old = bar.info.geom;
             wanted[i].geom.occupied = Offset(old.occupied, wanted[i].geom.taskbar.left - old.taskbar.left,
@@ -418,12 +433,14 @@ void OverlayManager::Place() {
         if (bar->info.primary) primary = bar.get();
     }
     if (!space_.Attached() || !initialized_) return;
+    const bool wasInEffect = space_.InEffect();
     if (primary && primary->placement.visible) {
         const TaskbarGeometry& g = primary->info.geom;
         space_.Reserve(primary->placement.rect, g.edge, Margin(g.dpi));
     } else {
         space_.Reserve({}, Edge::Bottom, 0);  // nothing to make room for: natural size
     }
+    if (wasInEffect && !space_.InEffect()) probeDue_ = true;  // refused: measure the buttons next tick
 }
 
 void OverlayManager::EvaluateShell() {
@@ -495,12 +512,17 @@ void OverlayManager::CreateTooltip(Bar& bar) {
                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, bar.window.Hwnd(),
                                   nullptr, inst_, nullptr);
     if (!bar.tooltip) return;
+    ApplyTooltipTheme(bar);
     TTTOOLINFOW ti{sizeof(ti)};
     ti.uFlags = TTF_SUBCLASS;
     ti.hwnd = bar.window.Hwnd();
     ti.uId = kToolId;
     ti.lpszText = tooltip_.data();
     SendMessageW(bar.tooltip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
+}
+
+void OverlayManager::ApplyTooltipTheme(const Bar& bar) const {
+    if (bar.tooltip) SetWindowTheme(bar.tooltip, OverlayTooltipTheme(light_, IsHighContrast()), nullptr);
 }
 
 }  // namespace nsm

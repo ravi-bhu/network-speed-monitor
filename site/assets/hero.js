@@ -204,7 +204,9 @@
         `<span class="r-muted" aria-hidden="true">↓ ${volume(t.rx)} · ↑ ${volume(t.tx)}</span>` +
         `<span class="vh">Received ${volume(t.rx)}, sent ${volume(t.tx)}</span>`;
 
-      // Summary: Today, This week and This month, then the chosen period, highlighted.
+      // Summary: Today, This week and This month, then the chosen period, highlighted. When the chosen period is
+      // one of the first three, that card is highlighted instead (FixedSummaryCard).
+      const fixed = ["today", "thisWeek", "thisMonth"].indexOf(period);
       const card = (title, t, on) =>
         `<div class="r-card${on ? " is-on" : ""}"><span class="r-muted">${esc(title)}</span>` +
         `<span class="r-value">${volume(sum(t))}</span>${detail(t)}</div>`;
@@ -213,8 +215,9 @@
       const panel = (title, rows) =>
         `<div class="r-panel"><p class="r-panel-title">${esc(title)}</p>${empty ? row(esc(NONE), "", true) : rows.join("")}</div>`;
       panels[0].innerHTML =
-        `<div class="r-cards">${card("Today", dayTotals(TODAY))}${card("This week", totalsOf(WEEK, WEEK + 6))}` +
-        `${card("This month", totalsOf(...RANGES.thisMonth))}${card(periodName, total, true)}</div>` +
+        `<div class="r-cards${fixed < 0 ? "" : " r-three"}">${card("Today", dayTotals(TODAY), fixed === 0)}` +
+        `${card("This week", totalsOf(WEEK, WEEK + 6), fixed === 1)}${card("This month", totalsOf(...RANGES.thisMonth), fixed === 2)}` +
+        `${fixed < 0 ? card(periodName, total, true) : ""}</div>` +
         `<div class="r-panels">` +
         panel("Busiest day", busiest ? [row(esc(longDate(dateOf(busiest))), volume(sum(dayTotals(busiest)))), row(detail(dayTotals(busiest)), "", true)] : []) +
         panel("Top adapters", adapters.map((a) => row(esc(a.name), volume(sum(a.t))))) +
