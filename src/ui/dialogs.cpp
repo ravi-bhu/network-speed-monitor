@@ -186,6 +186,7 @@ constexpr wchar_t kButtonClass[] = L"Button";
 struct SettingsState {
     Settings settings;
     std::vector<AdapterChoice> choices;
+    SettingsDialogState result;  // the controls on OK
     SettingsDialogOptions* options = nullptr;
     DialogTheme theme;
 };
@@ -294,6 +295,29 @@ LRESULT DrawDarkToggle(const NMCUSTOMDRAW* cd, const ReportPalette& palette, HBR
 
 namespace {
 
+// Without a source URL the link's row would stay empty above OK/Cancel: remove the link, move the buttons up
+// and shrink the dialog by the row's height, keeping it centred.
+void RemoveLinkRow(HWND dlg, HWND link) {
+    auto clientRect = [dlg](HWND child) {
+        RECT r{};
+        GetWindowRect(child, &r);
+        MapWindowPoints(nullptr, dlg, reinterpret_cast<POINT*>(&r), 2);
+        return r;
+    };
+    const int row = clientRect(link).top - clientRect(GetDlgItem(dlg, IDC_SET_ABOUT)).top;
+    DestroyWindow(link);
+    if (row <= 0) return;
+    for (const int id : {IDOK, IDCANCEL}) {
+        HWND button = GetDlgItem(dlg, id);
+        const RECT r = clientRect(button);
+        SetWindowPos(button, nullptr, r.left, r.top - row, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    }
+    RECT win{};
+    GetWindowRect(dlg, &win);
+    SetWindowPos(dlg, nullptr, win.left, win.top + row / 2, win.right - win.left, win.bottom - win.top - row,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 INT_PTR CALLBACK SettingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
     auto* s = reinterpret_cast<SettingsState*>(GetWindowLongPtrW(dlg, DWLP_USER));
     if (msg == WM_INITDIALOG) {
@@ -319,16 +343,30 @@ INT_PTR CALLBACK SettingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
 
         SetDlgItemTextW(dlg, IDC_SET_ABOUT,
                         FillPlaceholders(LoadStr(IDS_SET_ABOUT), {std::wstring(NSM_VERSION_W)}).c_str());
+        HWND link = GetDlgItem(dlg, IDC_SET_LINK);
         if (*NSM_SOURCE_URL_W) {
             SetDlgItemTextW(dlg, IDC_SET_LINK, (L"<a>" + LoadStr(IDS_SET_SOURCE) + L"</a>").c_str());
+            if (s->theme.dark) {
+                // Use the WM_CTLCOLORSTATIC text colour: the system link blue is about 3:1 on the dark dialog.
+                LITEM item{};
+                item.mask = LIF_ITEMINDEX | LIF_STATE;
+                item.state = LIS_DEFAULTCOLORS;
+                item.stateMask = LIS_DEFAULTCOLORS;
+                SendMessageW(link, LM_SETITEM, 0, reinterpret_cast<LPARAM>(&item));
+            }
         } else {
-            DestroyWindow(GetDlgItem(dlg, IDC_SET_LINK));
+            RemoveLinkRow(dlg, link);
         }
         s->theme.Apply(dlg);
         if (s->theme.dark) SetWindowTheme(GetDlgItem(dlg, IDC_SET_ADAPTER), L"DarkMode_CFD", nullptr);
         return TRUE;  // default focus: the first control
     }
     if (!s) return FALSE;
+    if (msg == WM_CTLCOLORSTATIC && reinterpret_cast<HWND>(lp) == GetDlgItem(dlg, IDC_SET_LINK)) {
+        const INT_PTR brush = s->theme.CtlColor(wp);
+        if (brush) SetTextColor(reinterpret_cast<HDC>(wp), s->theme.palette.accent);
+        return brush;
+    }
     if (IsCtlColor(msg)) return s->theme.CtlColor(wp);
     if (msg == WM_NOTIFY) {
         const auto* hdr = reinterpret_cast<const NMHDR*>(lp);
@@ -355,7 +393,7 @@ INT_PTR CALLBACK SettingsProc(HWND dlg, UINT msg, WPARAM wp, LPARAM lp) {
                 if (s->options) s->options->openAdapters = true;
                 [[fallthrough]];  // apply what the controls hold now, then let the caller open the report
             case IDOK:
-                s->settings = ApplyDialogState(s->settings, ReadControls(dlg), s->choices);
+                s->result = ReadControls(dlg);
                 EndDialog(dlg, IDOK);
                 return TRUE;
             case IDC_SET_OPEN_FOLDER: {
@@ -446,19 +484,19 @@ Settings ApplyDialogState(Settings base, const SettingsDialogState& state, const
     return base;
 }
 
-bool ShowSettingsDialog(HWND owner, Settings& s, const std::vector<AdapterChoice>& adapters,
-                        SettingsDialogOptions* options) {
+std::optional<SettingsDialogState> ShowSettingsDialog(HWND owner, const Settings& s,
+                                                      const std::vector<AdapterChoice>& choices,
+                                                      SettingsDialogOptions* options) {
     SettingsState state;
     state.settings = s;
-    state.choices = SettingsAdapterChoices(adapters, s.adapterId);
+    state.choices = choices;
     state.options = options;
     state.theme.dark = options && options->dark;
     if (options) options->openAdapters = false;
     if (DialogBoxParamW(Module(), MAKEINTRESOURCEW(IDD_SETTINGS), owner, &SettingsProc,
                         reinterpret_cast<LPARAM>(&state)) != IDOK)
-        return false;
-    s = state.settings;
-    return true;
+        return std::nullopt;
+    return state.result;
 }
 
 bool ConfirmDelete(HWND owner, const std::wstring& message) {

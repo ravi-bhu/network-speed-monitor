@@ -65,8 +65,11 @@ struct SettingsDialogOptions {
     bool openAdapters = false;
 };
 
-// Modal. True = OK: `s` holds the new settings (not yet applied or saved). Cancel and Esc leave `s` untouched.
-bool ShowSettingsDialog(HWND owner, Settings& s, const std::vector<AdapterChoice>& adapters,
-                        SettingsDialogOptions* options = nullptr);
+// Modal; the controls start from `s`, and `choices` (from SettingsAdapterChoices) fills the adapter list. Returns
+// what the controls hold on OK, or nullopt for Cancel and Esc. Settings can change while the dialog is open (the
+// report window's rectangle), so apply the result with ApplyDialogState onto the settings as they are then.
+std::optional<SettingsDialogState> ShowSettingsDialog(HWND owner, const Settings& s,
+                                                      const std::vector<AdapterChoice>& choices,
+                                                      SettingsDialogOptions* options = nullptr);
 
 }  // namespace nsm

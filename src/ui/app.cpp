@@ -539,19 +539,22 @@ void App::ShowSettings() {
     settingsOpen_ = true;
     if (recording_) metas_ = store_.Adapters();
     // The same list as the right-click menu: not hidden, plus the pinned adapter even if hidden or gone.
-    std::vector<AdapterChoice> choices;
+    std::vector<AdapterChoice> listed;
     const std::vector<AdapterMenuItem> items =
         BuildAdapterMenu(adapters_, metas_, settings_.adapterId, LoadStr(IDS_MENU_AUTOMATIC));
-    for (size_t i = 1; i < items.size(); ++i) choices.emplace_back(items[i].id, items[i].label);
+    for (size_t i = 1; i < items.size(); ++i) listed.emplace_back(items[i].id, items[i].label);
+    const std::vector<AdapterChoice> choices = SettingsAdapterChoices(listed, settings_.adapterId);
 
     SettingsDialogOptions options;
     options.dark = reportTheme_ ? *reportTheme_ == ReportTheme::Dark : (!IsHighContrast() && !AreAppsLight());
     options.dataDir = dataDir_;
-    Settings next = settings_;
-    const bool ok = ShowSettingsDialog(hwnd_, next, choices, &options);
+    const std::optional<SettingsDialogState> chosen = ShowSettingsDialog(hwnd_, settings_, choices, &options);
     settingsOpen_ = false;
-    if (!ok || exiting_) return;
+    if (!chosen || exiting_) return;
 
+    // Only the dialog's fields, onto settings_ as it is now: the report window may have been moved or resized
+    // (reportRect) while the dialog was open.
+    const Settings next = ApplyDialogState(settings_, *chosen, choices);
     const bool autostartChanged = next.startWithWindows != settings_.startWithWindows;
     settings_ = next;
     if (autostartChanged) SetAutostart(settings_.startWithWindows);  // a failure is retried at the next start
