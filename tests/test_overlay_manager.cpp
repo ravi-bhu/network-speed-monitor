@@ -1,5 +1,7 @@
 #include "doctest.h"
 
+#include <string_view>
+
 #include "ui/overlay_manager.h"
 
 using namespace nsm;
@@ -38,6 +40,15 @@ TEST_CASE("WantsOverlay: secondary taskbars only with allTaskbars, clock fallbac
     CHECK(!WantsOverlay(false, false, false));
     CHECK(WantsOverlay(false, true, true));
     CHECK(WantsOverlay(false, false, true));
+}
+
+TEST_CASE("OverlayTooltipTheme: dark like the taskbar, default when light or high contrast (#29)") {
+    const wchar_t* dark = OverlayTooltipTheme(false, false);
+    REQUIRE(dark != nullptr);
+    CHECK(std::wstring_view(dark) == L"DarkMode_Explorer");  // as the report's chart tooltip
+    CHECK(OverlayTooltipTheme(true, false) == nullptr);       // the default (light) tooltip theme
+    CHECK(OverlayTooltipTheme(false, true) == nullptr);       // high contrast keeps the system colours
+    CHECK(OverlayTooltipTheme(true, true) == nullptr);
 }
 
 TEST_CASE("PlanTick: a hidden overlay still follows the taskbar every tick (#31)") {

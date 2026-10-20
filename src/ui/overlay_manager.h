@@ -93,6 +93,7 @@ private:
     bool Gated(const Bar& bar) const;  // hidden by auto-hide, a fullscreen app or a flyout
     bool AnyShown() const;
     void CreateTooltip(Bar& bar);
+    void ApplyTooltipTheme(const Bar& bar) const;
     OccupiedProbe FullProbeMode() const;
 
     static inline OverlayManager* instance_ = nullptr;
@@ -134,6 +135,9 @@ bool IsShellFlyoutClass(std::wstring_view cls);  // Start, search, Task View, tr
 // Whether a probed taskbar gets an overlay. The primary needs its real tray: without
 // TrayNotifyWnd the fallback would put the overlay over the tray icons and clock.
 bool WantsOverlay(bool primary, bool trayFound, bool allTaskbars);
+// The overlay tooltip's visual style (SetWindowTheme's app name): dark with a dark taskbar, as the
+// report's chart tooltip is in dark mode; nullptr (the default theme) when light or in high contrast.
+const wchar_t* OverlayTooltipTheme(bool taskbarLight, bool highContrast);
 // What the 1 s tick does. followTaskbars re-reads each taskbar's rect (one GetWindowRect, no
 // UIA) every tick: Explorer doesn't raise a location event for the auto-hide slide, so a
 // hidden overlay would otherwise never notice the taskbar coming back.
