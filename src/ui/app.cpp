@@ -23,8 +23,10 @@ namespace {
 
 constexpr UINT_PTR kTickTimer = 1;
 constexpr UINT_PTR kRefreshTimer = 2;  // one-shot re-query after a change: Windows names a new network a few seconds late
+constexpr UINT_PTR kWatchTimer = 3;    // while the change watcher could not start: poll, and retry starting it
 constexpr UINT kTickMs = 1000;
 constexpr UINT kRefreshDelayMs = 10'000;
+constexpr UINT kWatchRetryMs = 30'000;
 constexpr uint64_t kRollUpIntervalMs = 24ull * 3600 * 1000;
 
 enum Command : UINT {
@@ -64,7 +66,7 @@ bool LessByName(const AdapterMenuItem& a, const AdapterMenuItem& b) {
 
 // ---- Pure rules ----
 
-std::wstring DisplayAdapterId(const std::wstring& pinnedId, const std::wstring& internetId) {
+const std::wstring& DisplayAdapterId(const std::wstring& pinnedId, const std::wstring& internetId) {
     return pinnedId.empty() ? internetId : pinnedId;
 }
 
@@ -75,9 +77,52 @@ std::wstring AdapterIdForLuid(const std::vector<AdapterInfo>& adapters, std::opt
     return {};
 }
 
-std::wstring NetworkKeyOf(const std::map<std::wstring, NetworkIdentity>& networks, const std::wstring& adapterId) {
+const std::wstring& NetworkKeyOf(const std::map<std::wstring, NetworkIdentity>& networks,
+                                 const std::wstring& adapterId) {
+    static const std::wstring kNone;
     const auto it = networks.find(adapterId);
-    return it != networks.end() ? it->second.key : std::wstring{};
+    return it != networks.end() ? it->second.key : kNone;
+}
+
+void RecordTick(UsageAccumulator& acc, int64_t hourStartUtc, const TickResult& t,
+                const std::map<std::wstring, NetworkIdentity>& networks) {
+    for (const auto& d : t.perAdapter) {
+        acc.Add(hourStartUtc, Series::Adapter, d.adapterId, NetworkKeyOf(networks, d.adapterId), d.rx, d.tx);
+    }
+    if (t.internet) {
+        acc.Add(hourStartUtc, Series::Internet, t.internet->adapterId, NetworkKeyOf(networks, t.internet->adapterId),
+                t.internet->rx, t.internet->tx);
+    }
+}
+
+std::vector<AdapterInfo> AdaptersToSave(const std::vector<AdapterInfo>& present,
+                                        const std::vector<AdapterMeta>& stored) {
+    std::vector<AdapterInfo> out;
+    for (const auto& a : present) {
+        const AdapterMeta* meta = FindStored(stored, a.id);
+        if (!meta || meta->name != a.name || meta->kind != a.kind) out.push_back(a);
+    }
+    return out;
+}
+
+std::vector<NetworkMeta> NetworksToSave(const std::map<std::wstring, NetworkIdentity>& networks,
+                                        const std::vector<NetworkMeta>& stored) {
+    std::vector<NetworkMeta> out;
+    for (const auto& [adapterId, net] : networks) {
+        if (net.key.empty()) continue;
+        const auto sameKey = [&net](const NetworkMeta& n) { return n.key == net.key; };
+        if (std::any_of(out.begin(), out.end(), sameKey)) continue;
+        const auto it = std::find_if(stored.begin(), stored.end(), sameKey);
+        if (it == stored.end() || it->name != net.name) out.push_back(NetworkMeta{net.key, net.name});
+    }
+    return out;
+}
+
+bool FollowDisplayAdapter(std::wstring& shownId, const std::wstring& displayId, SpeedHistory& history) {
+    if (shownId == displayId) return false;
+    shownId = displayId;
+    history.Clear();
+    return true;
 }
 
 std::wstring DisplayNameOf(const std::wstring& id, const std::vector<AdapterInfo>& present,
@@ -276,7 +321,8 @@ bool App::Start(HINSTANCE inst, const std::wstring& cmdLine) {
     overlay_.onRightClick = [this](POINT pt) { PostMessageW(hwnd_, WM_APP_SHOWMENU, 0, MAKELPARAM(pt.x, pt.y)); };
     overlay_.SetOptions(OverlayOptions{settings_.allTaskbars, settings_.showGraph, settings_.letters, settings_.units});
     if (!overlay_.Init(inst, hwnd_)) return false;
-    watcher_.Start(hwnd_, WM_APP_NETCHANGED);  // without it the adapter list is only read at startup
+    // Without the watcher Automatic mode cannot follow changes: poll instead, and keep trying to start it.
+    if (!watcher_.Start(hwnd_, WM_APP_NETCHANGED)) SetTimer(hwnd_, kWatchTimer, kWatchRetryMs, nullptr);
     RefreshNetwork();
     lastFlushUtc_ = NowUtc();
     return SetTimer(hwnd_, kTickTimer, kTickMs, nullptr) != 0;
@@ -301,6 +347,9 @@ LRESULT App::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             } else if (wp == kRefreshTimer) {
                 KillTimer(hwnd_, kRefreshTimer);
                 RefreshNetwork();
+            } else if (wp == kWatchTimer) {
+                if (watcher_.Start(hwnd_, WM_APP_NETCHANGED)) KillTimer(hwnd_, kWatchTimer);
+                RefreshNetwork();  // whatever changed while nothing was watching
             }
             return 0;
         case WM_APP_NETCHANGED:
@@ -313,9 +362,11 @@ LRESULT App::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
             ShowReport(0);
             return 0;
         case WM_APP_SHOWMENU:
-            // Dispatched by a nested pump rather than the top-level loop: defer to that loop.
+            // Dispatched by a nested pump rather than the top-level loop: defer to that loop, and wake it,
+            // so the menu does not wait for the next tick when nothing else is queued.
             menuPending_ = true;
             menuPt_ = POINT{GET_X_LPARAM(lp), GET_Y_LPARAM(lp)};
+            PostMessageW(hwnd_, WM_NULL, 0, 0);
             return 0;
         case WM_POWERBROADCAST:
             if (wp == PBT_APMSUSPEND) FlushNow();
@@ -337,6 +388,7 @@ LRESULT App::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_DESTROY:
             KillTimer(hwnd_, kTickTimer);
             KillTimer(hwnd_, kRefreshTimer);
+            KillTimer(hwnd_, kWatchTimer);
             PostQuitMessage(0);
             return 0;
         default:
@@ -387,47 +439,36 @@ void App::RefreshNetworkOnce() {
 
 void App::SaveNetworkMeta() {
     if (!recording_) return;
-    // Upsert only what changed: network notifications can be frequent, and the disk is touched sparingly.
-    for (const auto& a : adapters_) {
-        const auto it = savedAdapters_.find(a.id);
-        if (it != savedAdapters_.end() && it->second == std::make_pair(a.name, a.kind)) continue;
-        store_.UpsertAdapter(a.id, a.name, a.kind);
-        savedAdapters_[a.id] = {a.name, a.kind};
-    }
-    for (const auto& [adapterId, net] : networks_) {
-        if (net.key.empty()) continue;
-        const auto it = savedNetworks_.find(net.key);
-        if (it != savedNetworks_.end() && it->second == net.name) continue;
-        store_.UpsertNetwork(NetworkMeta{net.key, net.name});
-        savedNetworks_[net.key] = net.name;
-    }
+    // Upsert only what the store does not hold yet: network notifications can be frequent, and the disk is
+    // touched sparingly. Saved means read back from the store, so a write that failed is retried next time.
+    for (const auto& a : AdaptersToSave(adapters_, metas_)) store_.UpsertAdapter(a.id, a.name, a.kind);
+    for (const auto& n : NetworksToSave(networks_, storedNetworks_)) store_.UpsertNetwork(n);
     metas_ = store_.Adapters();
+    storedNetworks_ = store_.Networks();
 }
 
 void App::Tick() {
     if (ticking_ || exiting_) return;  // a nested pump inside the overlay update can deliver another WM_TIMER
     ticking_ = true;
 
-    std::vector<AdapterSample> samples;
-    samples.reserve(adapters_.size());
+    size_t n = 0;  // samples_ is overwritten in place, so its id strings keep their capacity from tick to tick
     for (const auto& a : adapters_) {
-        if (auto r = ReadCounters(a.luid, MonotonicSeconds())) samples.push_back(AdapterSample{a.id, *r});
+        const auto r = ReadCounters(a.luid, MonotonicSeconds());
+        if (!r) continue;
+        if (n == samples_.size()) samples_.emplace_back();
+        samples_[n].adapterId = a.id;
+        samples_[n].reading = *r;
+        ++n;
     }
-    const std::wstring displayId = DisplayAdapterId(settings_.adapterId, internetId_);
-    const TickResult t = sampler_.Tick(samples, internetId_, displayId);
+    samples_.resize(n);
+    const std::wstring& displayId = DisplayAdapterId(settings_.adapterId, internetId_);
+    const TickResult t = sampler_.Tick(samples_, internetId_, displayId);
     const int64_t now = NowUtc();
 
-    if (recording_) {
-        const int64_t hour = LocalHourStart(now, tz_);  // tz_ follows WM_TIMECHANGE/WM_SETTINGCHANGE
-        for (const auto& d : t.perAdapter) {
-            accumulator_.Add(hour, Series::Adapter, d.adapterId, NetworkKeyOf(networks_, d.adapterId), d.rx, d.tx);
-        }
-        if (t.internet) {
-            accumulator_.Add(hour, Series::Internet, t.internet->adapterId,
-                             NetworkKeyOf(networks_, t.internet->adapterId), t.internet->rx, t.internet->tx);
-        }
-    }
+    // tz_ follows WM_TIMECHANGE/WM_SETTINGCHANGE.
+    if (recording_) RecordTick(accumulator_, LocalHourStart(now, tz_), t, networks_);
 
+    FollowDisplayAdapter(graphAdapterId_, displayId, history_);  // the graph never mixes two adapters
     history_.Push(t.display.value_or(Speed{}));
     if (trace_) {
         const Speed s = t.display.value_or(Speed{});
@@ -598,6 +639,7 @@ void App::Exit() {
     exiting_ = true;
     KillTimer(hwnd_, kTickTimer);
     KillTimer(hwnd_, kRefreshTimer);
+    KillTimer(hwnd_, kWatchTimer);
     if (report_) report_->Close();  // saves its bounds
     FlushNow();
     overlay_.Shutdown();  // before any window goes: restores the Win10 task list

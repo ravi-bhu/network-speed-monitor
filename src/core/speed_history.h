@@ -11,6 +11,7 @@ class SpeedHistory {
 public:
     explicit SpeedHistory(size_t capacity = 60);
     void Push(Speed s);
+    void Clear();  // forget every sample; the capacity stays
     size_t Size() const;
     double Max() const;  // max over rx and tx, never below 1000.0
     std::vector<double> Rx() const;

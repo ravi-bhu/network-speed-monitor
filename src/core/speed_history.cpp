@@ -17,6 +17,11 @@ void SpeedHistory::Push(Speed s) {
     }
 }
 
+void SpeedHistory::Clear() {
+    samples_.clear();
+    head_ = 0;
+}
+
 size_t SpeedHistory::Size() const { return samples_.size(); }
 
 double SpeedHistory::Max() const {
