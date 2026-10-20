@@ -1,6 +1,7 @@
 #include "ui/overlay_manager.h"
 
 #include <commctrl.h>
+#include <uxtheme.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -94,6 +95,10 @@ bool IsShellFlyoutClass(std::wstring_view cls) {
 
 bool WantsOverlay(bool primary, bool trayFound, bool allTaskbars) {
     return primary ? trayFound : allTaskbars;
+}
+
+const wchar_t* OverlayTooltipTheme(bool taskbarLight, bool highContrast) {
+    return taskbarLight || highContrast ? nullptr : L"DarkMode_Explorer";
 }
 
 OverlayManager::OverlayManager() = default;
@@ -215,6 +220,7 @@ bool OverlayManager::HandleMessage(UINT msg, WPARAM wp, LPARAM lp) {
         case WM_SETTINGCHANGE:
             if (lp && wcscmp(reinterpret_cast<const wchar_t*>(lp), L"ImmersiveColorSet") == 0) {
                 light_ = IsTaskbarLight();
+                for (const auto& bar : bars_) ApplyTooltipTheme(*bar);
                 Run(kShell);  // any work renders
             }
             return false;
@@ -495,12 +501,17 @@ void OverlayManager::CreateTooltip(Bar& bar) {
                                   CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, bar.window.Hwnd(),
                                   nullptr, inst_, nullptr);
     if (!bar.tooltip) return;
+    ApplyTooltipTheme(bar);
     TTTOOLINFOW ti{sizeof(ti)};
     ti.uFlags = TTF_SUBCLASS;
     ti.hwnd = bar.window.Hwnd();
     ti.uId = kToolId;
     ti.lpszText = tooltip_.data();
     SendMessageW(bar.tooltip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&ti));
+}
+
+void OverlayManager::ApplyTooltipTheme(const Bar& bar) const {
+    if (bar.tooltip) SetWindowTheme(bar.tooltip, OverlayTooltipTheme(light_, IsHighContrast()), nullptr);
 }
 
 }  // namespace nsm
