@@ -7,6 +7,15 @@ namespace {
 
 bool IsHorizontal(Edge e) { return e == Edge::Bottom || e == Edge::Top; }
 
+// The end the reservation shrinks (right, or bottom on a vertical taskbar), and the start.
+int FarEnd(const Rect& r, Edge e) { return IsHorizontal(e) ? r.right : r.bottom; }
+int NearEnd(const Rect& r, Edge e) { return IsHorizontal(e) ? r.left : r.top; }
+
+Rect WithFarEnd(Rect r, Edge e, int farEnd) {
+    (IsHorizontal(e) ? r.right : r.bottom) = farEnd;
+    return r;
+}
+
 }  // namespace
 
 Rect ReservedTaskListRect(const Rect& natural, const Rect& overlay, Edge edge, int margin) {
@@ -35,6 +44,7 @@ bool ReapplyLimiter::Allow(uint64_t nowMs) {
 void TaskListReservation::Attach(const Rect& current) {
     attached_ = true;
     dirty_ = false;
+    limiter_.Reset();  // a burst of rebuilds (display changes) is not a fight with Explorer
     natural_ = applied_ = current;
     overlay_ = {};
     edge_ = Edge::Bottom;
@@ -55,7 +65,15 @@ std::optional<Rect> TaskListReservation::SetOverlay(const Rect& overlay, Edge ed
 std::optional<Rect> TaskListReservation::Observe(const Rect& current, uint64_t nowMs) {
     if (!attached_) return std::nullopt;
     if (current != applied_) {
-        natural_ = current;  // Explorer laid the task list out again
+        const int ours = FarEnd(applied_, edge_);
+        const bool shrunk = ours < FarEnd(natural_, edge_);
+        const auto length = [this](const Rect& r) { return FarEnd(r, edge_) - NearEnd(r, edge_); };
+        if (shrunk && (FarEnd(current, edge_) == ours || length(current) == length(applied_))) {
+            // Our shrunk rect, moved (a band before it changed, or another row): not a layout.
+            natural_ = WithFarEnd(current, edge_, std::max(FarEnd(natural_, edge_), FarEnd(current, edge_)));
+        } else {
+            natural_ = current;  // Explorer laid the task list out again
+        }
     } else if (!dirty_) {
         return std::nullopt;  // as we left it
     }
@@ -68,6 +86,12 @@ std::optional<Rect> TaskListReservation::RestoreTarget(const Rect& current) cons
 }
 
 std::optional<Rect> TaskListReservation::Step(const Rect& current, uint64_t nowMs) {
+    if (!overlay_.Empty() && FarEnd(natural_, edge_) == NearEnd(overlay_, edge_) - margin_ &&
+        FarEnd(natural_, edge_) < FarEnd(overlay_, edge_) + margin_) {
+        // Ends exactly where we would end it: left shrunk by a killed instance, not Explorer's
+        // layout. The free space runs to the tray, a margin past the overlay.
+        natural_ = WithFarEnd(natural_, edge_, FarEnd(overlay_, edge_) + margin_);
+    }
     const Rect target = ReservedTaskListRect(natural_, overlay_, edge_, margin_);
     if (target == current) {
         applied_ = current;
@@ -95,7 +119,11 @@ bool TaskbarSpaceWin10::Attach(HWND taskbar) {
 }
 
 void TaskbarSpaceWin10::Reserve(const Rect& overlay, Edge edge, int margin) {
-    if (!taskSw_ || writing_) return;
+    if (!taskSw_) return;
+    if (writing_) {  // re-entered from inside Write's SetWindowPos: the latest request runs after it
+        pending_ = Request{overlay, edge, margin};
+        return;
+    }
     // Keep the overlay in rebar client coordinates: the taskbar can slide (auto-hide) without
     // changing where the task list must end.
     Rect inRebar;
@@ -125,6 +153,7 @@ void TaskbarSpaceWin10::Restore() {
         restoreAfterWrite_ = true;
         return;
     }
+    pending_.reset();
     if (taskSw_ && IsWindow(taskSw_)) {
         if (auto target = state_.RestoreTarget(CurrentInRebar())) Write(*target);
     }
@@ -143,6 +172,10 @@ void TaskbarSpaceWin10::Write(const Rect& r) {
     if (restoreAfterWrite_) {
         restoreAfterWrite_ = false;
         Restore();
+    } else if (pending_) {
+        const Request req = *pending_;
+        pending_.reset();
+        Reserve(req.overlay, req.edge, req.margin);
     }
 }
 
