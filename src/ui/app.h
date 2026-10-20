@@ -56,7 +56,7 @@ private:
     void RetryOpenStore();   // a later OpenStore after a failed one (e.g. the disk was busy at login)
     void RefreshNetwork();
     void RefreshNetworkOnce();
-    void SaveNetworkMeta();  // upserts adapter and network names that changed since the last save
+    void SaveNetworkMeta();  // upserts adapter and network names the store does not hold yet
     void Tick();
     void RollUpNow();
     void ShowMenu(POINT pt);
@@ -87,10 +87,11 @@ private:
 
     std::vector<AdapterInfo> adapters_;  // as of the last network refresh
     std::vector<AdapterMeta> metas_;     // stored names, friendly names and hidden flags
+    std::vector<NetworkMeta> storedNetworks_;  // as read back at the last SaveNetworkMeta, to skip no-op writes
     std::map<std::wstring, NetworkIdentity> networks_;
     std::wstring internetId_;
-    std::map<std::wstring, std::pair<std::wstring, AdapterKind>> savedAdapters_;  // last upserted, to skip no-op writes
-    std::map<std::wstring, std::wstring> savedNetworks_;
+    std::wstring graphAdapterId_;         // the adapter history_ holds samples of
+    std::vector<AdapterSample> samples_;  // Tick's buffer, reused so its strings keep their capacity
 
     int64_t lastFlushUtc_ = 0;
     uint64_t lastRollUpMs_ = 0;  // GetTickCount64 at the last rollup
@@ -109,9 +110,28 @@ private:
 
 // The adapter whose speed the overlay shows: the pinned one, or the internet adapter in Automatic
 // mode (empty pinnedId). A pinned adapter that is gone is still returned, so the overlay shows a dash.
-std::wstring DisplayAdapterId(const std::wstring& pinnedId, const std::wstring& internetId);
+// Returns a reference to one of the arguments.
+const std::wstring& DisplayAdapterId(const std::wstring& pinnedId, const std::wstring& internetId);
 std::wstring AdapterIdForLuid(const std::vector<AdapterInfo>& adapters, std::optional<NET_LUID> luid);
-std::wstring NetworkKeyOf(const std::map<std::wstring, NetworkIdentity>& networks, const std::wstring& adapterId);
+// The adapter's network key, or a reference to an empty string. Valid while `networks` is unchanged.
+const std::wstring& NetworkKeyOf(const std::map<std::wstring, NetworkIdentity>& networks,
+                                 const std::wstring& adapterId);
+
+// Adds one tick's deltas to the accumulator in the hour bucket: an Adapter row per adapter under that
+// adapter's network, and the Internet row under the internet adapter's network.
+void RecordTick(UsageAccumulator& acc, int64_t hourStartUtc, const TickResult& t,
+                const std::map<std::wstring, NetworkIdentity>& networks);
+
+// The names to upsert: what differs from the store's rows as last read back. A write that failed is
+// not in the store, so it is offered again at the next refresh.
+std::vector<AdapterInfo> AdaptersToSave(const std::vector<AdapterInfo>& present,
+                                        const std::vector<AdapterMeta>& stored);  // name or kind differs
+std::vector<NetworkMeta> NetworksToSave(const std::map<std::wstring, NetworkIdentity>& networks,
+                                        const std::vector<NetworkMeta>& stored);  // keyed only, each key once
+
+// The mini graph shows one adapter: when the displayed adapter changes (pinned to another, or Automatic
+// following a new internet adapter), clears `history` and records the new id. True if it changed.
+bool FollowDisplayAdapter(std::wstring& shownId, const std::wstring& displayId, SpeedHistory& history);
 // The user's friendly name if set, else the Windows name (live, then stored), else the id.
 std::wstring DisplayNameOf(const std::wstring& id, const std::vector<AdapterInfo>& present,
                            const std::vector<AdapterMeta>& stored);
