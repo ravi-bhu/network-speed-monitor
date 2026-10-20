@@ -38,4 +38,14 @@ wingetcreate update NetworkSpeedMonitor.NetworkSpeedMonitor --version <version> 
 ```
 
 The installer's Inno `AppId` never changes, so winget upgrades replace the existing install in place.
+The installer manifest names the install's uninstall key, so winget matches the installed copy by it instead of
+inferring it. The key is the `AppId` plus Inno's `_is1` suffix:
+
+```yaml
+AppsAndFeaturesEntries:
+- ProductCode: '{A5C137BB-8BC5-49E5-A9AE-ABE0DCCB2EDF}_is1'
+```
+
+Keep it when `wingetcreate` updates the manifests. It is quoted because a bare leading `{` is YAML mapping syntax.
+
 Silent installs and uninstalls (`winget uninstall`) keep the user's usage history; only an interactive uninstall asks.
