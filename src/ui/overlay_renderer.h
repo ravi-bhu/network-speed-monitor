@@ -31,6 +31,7 @@ std::wstring LinePrefix(bool upload, bool letters);
 float LineWidthDip(const std::wstring& line);
 
 // Draws the readout into a DC render target already bound to a 32bpp premultiplied DIB of `size`.
-void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c);
+// Returns the first failure (a brush, or EndDraw); on failure the DIB must not be shown.
+HRESULT RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c);
 
 }  // namespace nsm

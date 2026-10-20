@@ -166,7 +166,7 @@ OverlaySizes MeasureOverlay(unsigned dpi, bool letters) {
             ToPixels(compact, dpi)};
 }
 
-void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) {
+HRESULT RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) {
     const Text& t = GetText();
     const float dpi = static_cast<float>(c.dpi ? c.dpi : 96);
     const float scale = dpi / 96.0f;
@@ -180,13 +180,13 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) 
     rt->Clear(D2D1::ColorF(0, 0, 0, 1.0f / 255.0f));  // alpha 1: invisible, but the whole rect takes clicks
 
     ComPtr<ID2D1SolidColorBrush> textBrush, upBrush, downBrush, mutedBrush;
-    rt->CreateSolidColorBrush(D2D1::ColorF(pal.text), &textBrush);
-    rt->CreateSolidColorBrush(D2D1::ColorF(pal.upload), &upBrush);
-    rt->CreateSolidColorBrush(D2D1::ColorF(pal.download), &downBrush);
-    rt->CreateSolidColorBrush(D2D1::ColorF(pal.muted), &mutedBrush);
+    HRESULT hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.text), &textBrush);
+    if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.upload), &upBrush);
+    if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.download), &downBrush);
+    if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.muted), &mutedBrush);
 
     float textLeft = 0;
-    if (c.showGraph && c.history) {
+    if (SUCCEEDED(hr) && c.showGraph && c.history) {
         const float top = (height - kGraphHeight) / 2;
         const D2D1_RECT_F box{0, top, kGraphWidth, top + kGraphHeight};
         const double max = c.history->Max();
@@ -195,7 +195,7 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) 
         textLeft = kGraphWidth + kGraphGap;
     }
 
-    if (t.ok && textBrush) {
+    if (SUCCEEDED(hr) && t.ok) {
         const float textWidth = std::max(0.0f, width - textLeft - 2 * kTextPad);
         // Snap the first baseline box to a whole device pixel so text stays crisp.
         const float y0 = std::round((height - 2 * t.lineHeight) / 2 * scale) / scale;
@@ -216,7 +216,8 @@ void RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) 
     }
 
     // A software DC target never loses its device, so there is nothing to recreate on failure.
-    rt->EndDraw();
+    const HRESULT end = rt->EndDraw();
+    return FAILED(hr) ? hr : end;
 }
 
 }  // namespace nsm

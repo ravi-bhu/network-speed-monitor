@@ -3,6 +3,7 @@
 #include <string_view>
 
 #include "ui/overlay_manager.h"
+#include "ui/overlay_window.h"
 
 using namespace nsm;
 
@@ -66,4 +67,36 @@ TEST_CASE("PlanTick: rebuild when Explorer changed; probes on their cadence") {
     const TickPlan noBars = PlanTick(false, false, false, 2, true, false);
     CHECK(noBars.lightProbe);
     CHECK(!noBars.followTaskbars);
+}
+
+TEST_CASE("ClickTracker: a button-up is a click only after a button-down on the overlay (#6)") {
+    ClickTracker t;
+    CHECK(!t.Up(MouseButton::Left, true));  // a drag that started elsewhere ends over the overlay
+    CHECK(!t.Up(MouseButton::Right, true));
+
+    t.Down(MouseButton::Left);
+    CHECK(t.Pending());
+    CHECK(t.Up(MouseButton::Left, true));
+    CHECK(!t.Pending());
+    CHECK(!t.Up(MouseButton::Left, true));  // one down, one click
+
+    t.Down(MouseButton::Right);
+    CHECK(t.Up(MouseButton::Right, true));
+}
+
+TEST_CASE("ClickTracker: released off the overlay, other button, or capture lost is no click (#6)") {
+    ClickTracker t;
+    t.Down(MouseButton::Left);
+    CHECK(!t.Up(MouseButton::Left, false));  // pressed on the overlay, released elsewhere
+    CHECK(!t.Pending());
+
+    t.Down(MouseButton::Left);
+    CHECK(!t.Up(MouseButton::Right, true));  // the other button does not complete the click
+    CHECK(t.Pending());
+    CHECK(t.Up(MouseButton::Left, true));
+
+    t.Down(MouseButton::Right);
+    t.Cancel();  // capture taken away mid-press
+    CHECK(!t.Pending());
+    CHECK(!t.Up(MouseButton::Right, true));
 }
