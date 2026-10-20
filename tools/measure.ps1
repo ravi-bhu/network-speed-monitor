@@ -1,9 +1,12 @@
 <#
 .SYNOPSIS
   Samples a running process every 5 s and checks the resource budgets.
-  Exit codes: 0 pass, 1 threshold exceeded, 2 setup problem (process missing/ambiguous/exited).
+  Exit codes: 0 pass, 1 threshold exceeded, 2 setup or measurement problem (process missing/ambiguous/exited,
+  or the CIM query failed).
   Thresholds: average CPU >= 0.5% of the machine, max private bytes > 15 MB,
-  or more than 2 write bursts per 10 minutes (scaled to the run length, floor of 2).
+  or more than ceil(Minutes*60/300)+1 write bursts (3 for 10 minutes). The app flushes on a 300 s timer, which
+  fires 2 or 3 times in a 10-minute window depending on its phase, hence the +1. The app also flushes when the
+  local hour changes; that restarts the timer, so it adds a burst only in a rare alignment with a timer flush.
 
   Disk writes are counted from the process itself (Win32_Process WriteOperationCount/WriteTransferCount).
   File mtimes and sizes of usage.db, usage.db-wal and usage.db-shm cannot be used: NTFS does not refresh
@@ -28,7 +31,10 @@ if ($procs.Count -gt 1) { Fail 2 "$($procs.Count) instances of '$ProcessName' ar
 $p = $procs[0]
 $procId = $p.Id
 
-function Get-Io { Get-CimInstance Win32_Process -Filter "ProcessId=$procId" | Select-Object WriteOperationCount, WriteTransferCount }
+function Get-Io {
+    try { Get-CimInstance Win32_Process -Filter "ProcessId=$procId" | Select-Object WriteOperationCount, WriteTransferCount }
+    catch { Fail 2 "CIM query for pid $procId failed: $($_.Exception.Message)" }
+}
 
 $io = Get-Io
 if (-not $io) { Fail 2 'Process exited before measurement started.' }
@@ -63,7 +69,7 @@ $p.Refresh()
 $elapsed = $sw.Elapsed.TotalSeconds - $t0
 $cpuPct = 100.0 * ($p.TotalProcessorTime.TotalSeconds - $cpu0) / $elapsed / $cores
 $privMB = $maxPriv / 1MB
-$burstLimit = [Math]::Max(2, [Math]::Ceiling(2.0 * $Minutes / 10))
+$burstLimit = [Math]::Ceiling($Minutes * 60 / 300.0) + 1
 $totalOps = $lastOps - $startOps
 $totalBytes = $lastBytes - $startBytes
 

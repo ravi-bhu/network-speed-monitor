@@ -10,8 +10,8 @@ Windows 11 machine is listed in [manual-verification.md](manual-verification.md)
 ## 1. No networking imports (`tools/check_imports.ps1`)
 
 `tools/check_imports.ps1 build\src\ui\Release\NetworkSpeedMonitor.exe` -> exit 0.
-Imported DLLs: advapi32, api-ms-win-shcore-scaling-l1-1-1, comctl32, d2d1, dwmapi, dwrite, gdi32,
-iphlpapi, kernel32, ole32, oleaut32, shell32, user32, uxtheme.
+Imported DLLs: advapi32.dll, api-ms-win-shcore-scaling-l1-1-1.dll, comctl32.dll, d2d1.dll, dwmapi.dll,
+dwrite.dll, gdi32.dll, iphlpapi.dll, kernel32.dll, ole32.dll, oleaut32.dll, shell32.dll, user32.dll, uxtheme.dll.
 None of `ws2_32.dll`, `winhttp.dll`, `wininet.dll`, `urlmon.dll` is imported.
 (`iphlpapi.dll` is used for adapter counters only; it opens no sockets.)
 
@@ -34,6 +34,8 @@ Measured pid 25568, `build\src\ui\Release\NetworkSpeedMonitor.exe`, 602.5 s (10.
 
 Result: PASS (exit 0), with the write budget exactly met. The two bursts are consistent with the 300 s flush timer
 firing twice in 10 minutes. The shutdown flush is outside the window.
+`measure.ps1` has since raised the burst limit to ceil(minutes*60/300)+1, which is 3 for 10 minutes: depending on
+its phase, the 300 s timer fires two or three times in a 10-minute window.
 
 Why write counts come from the process and not from file times: the database is in WAL mode and NTFS does not
 refresh a file's directory-entry mtime or size while it is held open. In a 6m45s run the `usage.db-wal` entry
@@ -43,7 +45,8 @@ So no mtime or length metric can see flushes. An earlier run of this task that u
 
 ## 3. Sockets owned by the process at sampling instants
 
-During the same window (158 samples about every 3 s for 10 minutes, taken by a separate watcher),
+During the same window, a separate watcher took 158 samples (a nominal 3 s interval plus the query time,
+so about 3.8 s apart over the 10 minutes).
 `Get-NetTCPConnection -OwningProcess <pid>` and `Get-NetUDPEndpoint -OwningProcess <pid>` returned nothing: 0 TCP
 and 0 UDP entries in total. This shows no sockets at the sampling instants only; a short-lived connection between
 samples would be missed. The stronger evidence is section 1: the exe does not import any Winsock or HTTP DLL.
