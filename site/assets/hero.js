@@ -578,7 +578,13 @@
   });
   // Submenu keyboard: the same moves; Left or Esc goes back to the parent item.
   for (const s of subs) {
-    s.item.addEventListener("click", () => openSub(s, true));
+    // A second tap closes the submenu: touch has no pointing away to close it. A mouse click keeps it open, as in Windows.
+    let pointer = "";
+    s.item.addEventListener("pointerdown", (e) => { pointer = e.pointerType; });
+    s.item.addEventListener("click", (e) => {
+      if (e.detail !== 0 && pointer !== "mouse" && !s.list.hidden) closeSubs();
+      else openSub(s, true);
+    });
     s.item.addEventListener("pointerenter", (e) => { if (e.pointerType === "mouse") openSub(s, false); });
     s.list.addEventListener("keydown", (e) => {
       const items = subItems(s.list), i = items.indexOf(document.activeElement);
