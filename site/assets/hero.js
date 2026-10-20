@@ -28,35 +28,126 @@
   const fmtBits = (bytesPerSec) => scale(bytesPerSec * 8, ["bps", "Kbps", "Mbps", "Gbps"]); // FormatSpeed, bits
   const volume = (bytes) => scale(bytes, ["B", "KB", "MB", "GB", "TB"]); // FormatVolume
 
-  // ---- Report replica (reusable): fills every [data-report-example] with the report's four tabs ----
+  // ---- Report replica (reusable): fills every [data-report-example] with the report window ----
 
   const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 
-  // Example data for a fixed month, so every number agrees with the others on any day. Plausible for one
-  // home PC; not real data. Volumes are in GB (1 GB = 1e9 bytes) as [received, sent].
-  const EXAMPLE = {
-    year: 2026, monthIndex: 9, // October 2026 (months count from 0)
-    today: 23, weekStart: 19,  // "today" is Friday 23 October; the week started on Monday 19 October
-    // Internet traffic per day, 1 October to today. The rest of the month has no traffic yet.
-    days: [
-      [1.42, 0.16], [1.88, 0.21], [3.10, 0.19], [3.46, 0.22], [1.25, 0.14], [1.61, 0.31], [0.94, 0.08],
-      [1.70, 0.18], [2.05, 0.24], [2.87, 0.17], [3.92, 0.25], [1.33, 0.29], [1.58, 0.15], [1.47, 0.14],
-      [1.76, 0.33], [6.21, 0.63], [3.35, 0.21], [2.98, 0.19], [1.52, 0.27], [1.81, 0.30], [1.39, 0.14],
-      [2.14, 0.22], [1.12, 0.11],
-    ],
-    // Each adapter's own traffic this month: name, type (IDS_KIND_*), received, sent. Wi-Fi plus Ethernet is
-    // the internet total; the VPN runs over the Wi-Fi, so its traffic counts twice (IDS_NOTE_RAW).
-    adapters: [["Wi-Fi", "Wi-Fi", 44.37, 4.41], ["Ethernet", "Ethernet", 6.49, 0.72], ["Work VPN", "Virtual", 2.84, 0.61]],
-    // The Wi-Fi adapter's traffic by network; adds up to the Wi-Fi row.
-    networks: [["Home-5G", 39.12, 3.58], ["Office", 4.78, 0.76], ["Café guest", 0.47, 0.07]],
-  };
+  // Example history for one home PC, not real data: every day from 1 July 2026 to "today", Friday 23 October
+  // 2026, with today's traffic up to 6 PM. October is written out; July to September come from a seeded
+  // generator, so every visitor sees the same numbers and every total agrees with the others.
   const GB = 1e9;
-  const totals = (pairs) => pairs.reduce((t, [rx, tx]) => ({ rx: t.rx + rx * GB, tx: t.tx + tx * GB }), { rx: 0, tx: 0 });
+  const ZERO = { rx: 0, tx: 0 };
+  const dayNo = (y, m, d) => Math.round(Date.UTC(y, m, d) / 864e5); // whole days since 1970-01-01
+  const dateOf = (n) => { const u = new Date(n * 864e5); return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate()); };
+  const FIRST = dayNo(2026, 6, 1), TODAY = dayNo(2026, 9, 23), NOW_HOUR = 18;
+  const WEEK = dayNo(2026, 9, 19); // this week started on Monday 19 October (the app follows the locale's first day)
+  const OCTOBER = [ // internet traffic per day in GB, [received, sent]
+    [1.42, 0.16], [1.88, 0.21], [3.10, 0.19], [3.46, 0.22], [1.25, 0.14], [1.61, 0.31], [0.94, 0.08],
+    [1.70, 0.18], [2.05, 0.24], [2.87, 0.17], [3.92, 0.25], [1.33, 0.29], [1.58, 0.15], [1.47, 0.14],
+    [1.76, 0.33], [6.21, 0.63], [3.35, 0.21], [2.98, 0.19], [1.52, 0.27], [1.81, 0.30], [1.39, 0.14],
+    [2.14, 0.22], [1.12, 0.11],
+  ];
+  const HISTORY = new Map(); // day number -> { rx, tx } in bytes
+  {
+    let seed = 2026;
+    const rand = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 2 ** 32; };
+    for (let n = FIRST; n < dayNo(2026, 9, 1); n++) {
+      const weekend = [0, 6].includes(dateOf(n).getDay());
+      let rx = (weekend ? 2.6 : 1.6) * (0.55 + rand() * 0.9);
+      if (rand() < 0.06) rx += 2 + rand() * 2.5; // a big download now and then
+      const tx = rx * (0.07 + rand() * 0.08);
+      HISTORY.set(n, { rx: Math.round(rx * 100) / 100 * GB, tx: Math.round(tx * 100) / 100 * GB });
+    }
+    OCTOBER.forEach(([rx, tx], i) => HISTORY.set(dayNo(2026, 9, 1) + i, { rx: rx * GB, tx: tx * GB }));
+  }
+  const dayTotals = (n) => HISTORY.get(n) || ZERO;
   const sum = (t) => t.rx + t.tx;
+  const add = (a, b) => ({ rx: a.rx + b.rx, tx: a.tx + b.tx });
+  function totalsOf(from, to) { let t = ZERO; for (let n = from; n <= to; n++) t = add(t, dayTotals(n)); return t; }
+
+  // A day by the hour: quiet at night, busiest in the evening. Today stops at 6 PM.
+  const PROFILE = [.5, .3, .2, .15, .15, .2, .5, 1, 1.4, 1.5, 1.5, 1.4, 1.5, 1.4, 1.3, 1.4, 1.7, 2, 2.5, 2.9, 3, 2.6, 1.8, 1];
+  function hoursOf(n) {
+    const last = n === TODAY ? NOW_HOUR : 23, d = dayTotals(n);
+    const weight = PROFILE.slice(0, last + 1).reduce((a, b) => a + b, 0);
+    return PROFILE.map((p, h) => (h > last ? ZERO : { rx: d.rx * p / weight, tx: d.tx * p / weight }));
+  }
+
+  // Each adapter's and Wi-Fi network's share of the internet traffic, from an October where Wi-Fi plus Ethernet
+  // made up the internet total and the VPN ran over the Wi-Fi (so its traffic counts twice, IDS_NOTE_RAW).
+  const OCT_TOTAL = totalsOf(dayNo(2026, 9, 1), TODAY);
+  const share = (rx, tx) => ({ rx: rx * GB / OCT_TOTAL.rx, tx: tx * GB / OCT_TOTAL.tx });
+  const ADAPTERS = [["Wi-Fi", "Wi-Fi", share(44.37, 4.41)], ["Ethernet", "Ethernet", share(6.49, 0.72)], ["Work VPN", "Virtual", share(2.84, 0.61)]];
+  const NETWORKS = [["Home-5G", share(39.12, 3.58)], ["Office", share(4.78, 0.76)], ["Café guest", share(0.47, 0.07)]];
+  const split = (t, s) => ({ rx: t.rx * s.rx, tx: t.tx * s.tx });
+
+  // The period list, as the app fills it (IDS_PERIOD_*), and ResolvePeriod's ranges as [first day, last day].
+  const PERIODS = [
+    ["today", "Today"], ["yesterday", "Yesterday"], ["thisWeek", "This week"], ["lastWeek", "Last week"],
+    ["thisMonth", "This month"], ["lastMonth", "Last month"], ["last30", "Last 30 days"], ["thisYear", "This year"],
+    ["allTime", "All time"], ["custom", "Custom range…"],
+  ];
+  const RANGES = {
+    today: [TODAY, TODAY], yesterday: [TODAY - 1, TODAY - 1],
+    thisWeek: [WEEK, WEEK + 6], lastWeek: [WEEK - 7, WEEK - 1],
+    thisMonth: [dayNo(2026, 9, 1), dayNo(2026, 9, 31)], lastMonth: [dayNo(2026, 8, 1), dayNo(2026, 8, 30)],
+    last30: [TODAY - 29, TODAY], thisYear: [dayNo(2026, 0, 1), dayNo(2026, 11, 31)],
+    allTime: [FIRST, TODAY, true], // open: from the first day with data
+  };
+  // PickGranularity: hours for one day within the last 90, days up to 92 days, months beyond (and for All time).
+  const granularityOf = ([from, to, open]) =>
+    open ? "month" : from === to && from >= TODAY - 90 ? "hour" : to - from < 92 ? "day" : "month";
+
+  function barsOf([from, to], g) {
+    if (g === "hour") return hoursOf(from).map((t, h) => ({ ...t, start: new Date(2000, 0, 1, h), day: from }));
+    if (g === "day") {
+      const out = [];
+      for (let n = from; n <= to; n++) out.push({ ...dayTotals(n), start: dateOf(n) });
+      return out;
+    }
+    const out = [], end = dateOf(to);
+    for (let m = new Date(dateOf(from).getFullYear(), dateOf(from).getMonth(), 1); m <= end; m = new Date(m.getFullYear(), m.getMonth() + 1, 1)) {
+      const a = dayNo(m.getFullYear(), m.getMonth(), 1), b = dayNo(m.getFullYear(), m.getMonth() + 1, 0);
+      out.push({ ...totalsOf(Math.max(a, from), Math.min(b, to)), start: m });
+    }
+    return out;
+  }
+
+  const shortDate = (n) => dateOf(n).toLocaleDateString();
+  const longDate = (d) => d.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeOf = (h, minutes) => new Date(2000, 0, 1, h).toLocaleTimeString([], minutes ? { hour: "numeric", minute: "2-digit" } : { hour: "numeric" });
+
+  // AxisLabels and BarTitle (report_window.cpp).
+  function axisLabel(bars, i, g) {
+    const d = bars[i].start;
+    if (g === "hour") return timeOf(d.getHours());
+    if (g === "day") {
+      if (bars.length <= 8) return d.toLocaleDateString(undefined, { weekday: "short" }) + " " + d.getDate();
+      return i === 0 || d.getDate() === 1 ? d.toLocaleDateString(undefined, { month: "short", day: "numeric" }) : String(d.getDate());
+    }
+    const spansYears = bars[0].start.getFullYear() !== bars[bars.length - 1].start.getFullYear();
+    return d.toLocaleDateString(undefined, spansYears && (i === 0 || d.getMonth() === 0) ? { month: "short", year: "numeric" } : { month: "short" });
+  }
+  function barTitle(bar, g) {
+    if (g === "hour") { // IDS_BAR_HOUR "%s, %s – %s"
+      const h = bar.start.getHours();
+      return `${longDate(dateOf(bar.day))}, ${timeOf(h, true)} – ${timeOf((h + 1) % 24, true)}`;
+    }
+    return g === "day" ? longDate(bar.start) : bar.start.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  }
+  // LabelStep (report_paint.cpp): the smallest step whose labels don't run into each other.
+  const STEPS = { hour: [1, 2, 3, 4, 6, 12, 24], day: [1, 2, 7, 14, 28], month: [1, 2, 3, 6, 12, 24] };
+  function labelStep(g, slot, labelW) {
+    for (const s of STEPS[g]) if (s * slot >= labelW) return s;
+    let s = STEPS[g][STEPS[g].length - 1];
+    while (s * slot < labelW) s *= 2;
+    return s;
+  }
+  const measure = document.createElement("canvas").getContext("2d");
 
   // ChooseAxis (report_paint.cpp): the smallest 1/2/2.5/5 x 10^k step covering max in at most 4 steps.
   function chooseAxis(max, maxSteps = 4) {
-    const raw = max / maxSteps;
+    const raw = Math.max(max, 1) / maxSteps;
     for (let decade = 1; ; decade *= 10) {
       const m = [1, 2, 2.5, 5].find((k) => k * decade >= raw && Number.isInteger(k * decade));
       if (m) { const step = m * decade; return { step, steps: Math.max(1, Math.ceil(max / step)) }; }
@@ -64,130 +155,185 @@
   }
 
   const TABS = ["Summary", "Timeline", "Adapters", "Wi-Fi networks"]; // IDS_TAB_*
+  const NONE = "No usage recorded in this period."; // IDS_NO_USAGE
   let reports = 0;
 
   function renderReport(root) {
     const id = "report-" + reports++;
-    const { year, monthIndex: month } = EXAMPLE;
-    const days = EXAMPLE.days.map(([rx, tx], i) => ({ day: i + 1, rx: rx * GB, tx: tx * GB }));
-    const today = days[EXAMPLE.today - 1];
-    const week = totals(EXAMPLE.days.slice(EXAMPLE.weekStart - 1, EXAMPLE.today));
-    const monthTotal = totals(EXAMPLE.days);
-    const busiest = days.reduce((a, d) => (sum(d) > sum(a) ? d : a)); // the earliest wins a tie
-    const adapters = EXAMPLE.adapters.map(([name, kind, rx, tx]) => ({ name, kind, rx: rx * GB, tx: tx * GB }));
-    const networks = EXAMPLE.networks.map(([name, rx, tx]) => ({ name, rx: rx * GB, tx: tx * GB }));
-    for (const list of [adapters, networks]) list.sort((a, b) => sum(b) - sum(a)); // by Total, largest first
+    let period = "thisMonth", custom = null;
 
-    const dateOf = (day) => new Date(year, month, day);
-    const longDate = (day) => dateOf(day).toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-    const lastDay = new Date(year, month + 1, 0).getDate();
-
-    // IDS_RX_TX "↓ %s · ↑ %s", with a spoken version.
-    const detail = (t) =>
-      `<span class="r-muted" aria-hidden="true">↓ ${volume(t.rx)} · ↑ ${volume(t.tx)}</span>` +
-      `<span class="vh">Received ${volume(t.rx)}, sent ${volume(t.tx)}</span>`;
-
-    // Summary
-    const card = (title, t, on) =>
-      `<div class="r-card${on ? " is-on" : ""}"><span class="r-muted">${esc(title)}</span>` +
-      `<span class="r-value">${volume(sum(t))}</span>${detail(t)}</div>`;
-    const row = (label, value, muted) =>
-      `<div class="r-row"><span${muted ? ' class="r-muted"' : ""}>${label}</span><span>${value}</span></div>`;
-    const panel = (title, rows) => `<div class="r-panel"><p class="r-panel-title">${esc(title)}</p>${rows.join("")}</div>`;
-    const summary =
-      `<div class="r-cards">${card("Today", today)}${card("This week", week)}` +
-      `${card("This month", monthTotal)}${card("This month", monthTotal, true)}</div>` +
-      `<div class="r-panels">` +
-      panel("Busiest day", [row(esc(longDate(busiest.day)), volume(sum(busiest))), row(detail(busiest), "", true)]) +
-      panel("Top adapters", adapters.slice(0, 3).map((a) => row(esc(a.name), volume(sum(a))))) +
-      panel("Top Wi-Fi networks", networks.slice(0, 3).map((n) => row(esc(n.name), volume(sum(n))))) +
-      `</div>` +
-      `<p class="r-note">Usage is recorded only while Network Speed Monitor is running.</p>`;
-
-    // Timeline: one bar per day of the month (Granularity::Day), received at the bottom, sent stacked on top.
-    // Hovering a bar shows the app's tooltip text (BarTitle, then IDS_TIP_RECEIVED / SENT / TOTAL).
-    const axis = chooseAxis(sum(busiest));
-    const axisMax = axis.step * axis.steps;
-    const pct = (v) => (100 * v / axisMax).toFixed(3) + "%";
-    let grid = "", yLabels = "", bars = "", xLabels = "";
-    for (let k = 0; k <= axis.steps; k++) {
-      const at = pct(axis.step * k);
-      grid += `<i class="r-grid${k ? "" : " r-base"}" style="bottom:${at}"></i>`;
-      yLabels += `<span style="bottom:${at}">${volume(axis.step * k)}</span>`;
-    }
-    for (let day = 1; day <= lastDay; day++) {
-      const d = days[day - 1] || { rx: 0, tx: 0 };
-      const tip = `${longDate(day)}\nReceived: ${volume(d.rx)}\nSent: ${volume(d.tx)}\nTotal: ${volume(sum(d))}`;
-      bars += `<span class="r-slot" title="${esc(tip)}">` + (sum(d) > 0
-        ? `<span class="r-col" style="height:${pct(sum(d))}"><span class="r-tx" style="flex-grow:${d.tx}"></span><span class="r-rx" style="flex-grow:${d.rx}"></span></span>`
-        : "") + `</span>`;
-      // AxisLabels: "MMM d" on the first bar, then the day number. One label a week is a fixed simplification
-      // of LabelStep, which picks 1, 2, 7, 14 or 28 days from the bar and label widths.
-      const label = day === 1 ? dateOf(day).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : String(day);
-      xLabels += `<span>${(day - 1) % 7 === 0 ? esc(label) : ""}</span>`;
-    }
-    const monthName = dateOf(1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
-    const timeline =
-      `<div class="r-legend"><span><i class="r-sw r-rx"></i>Received</span><span><i class="r-sw r-tx"></i>Sent</span></div>` +
-      `<div class="r-chart" role="img" aria-label="${esc(`Daily usage for ${monthName}, example data. Busiest day ${longDate(busiest.day)}, ${volume(sum(busiest))}.`)}">` +
-      `<div class="r-y">${yLabels}</div>` +
-      `<div class="r-plot">${grid}${bars}</div>` +
-      `<div class="r-x">${xLabels}</div></div>`;
-
-    // Adapters and Wi-Fi networks: list views sorted by Total, largest first (the default TableSort).
-    const table = (label, cols, rows) =>
-      `<div class="r-table-wrap"><table class="r-table" aria-label="${esc(label)}"><thead><tr>` +
-      cols.map((c, i) => {
-        const sorted = i === cols.length - 1;
-        return `<th scope="col"${c.num ? ' class="r-num"' : ""}${sorted ? ' aria-sort="descending"' : ""}>` +
-          `${sorted ? '<i class="r-sort" aria-hidden="true"></i>' : ""}${esc(c.name)}</th>`;
-      }).join("") +
-      `</tr></thead><tbody>` +
-      rows.map((r) => `<tr>${cols.map((c) => `<td${c.num ? ' class="r-num"' : ""}>${esc(c.get(r))}</td>`).join("")}</tr>`).join("") +
-      `</tbody></table></div>`;
-    const nameCol = { name: "Name", get: (r) => r.name };
-    const numberCols = [
-      { name: "Received", num: true, get: (r) => volume(r.rx) },
-      { name: "Sent", num: true, get: (r) => volume(r.tx) },
-      { name: "Total", num: true, get: (r) => volume(sum(r)) },
-    ];
-    const rawNote = `<p class="r-raw">Each row is that adapter's or network's own traffic, so rows can add up to more than your internet total (a VPN and the Wi-Fi it runs over both count).</p>`;
-    const adaptersTab = rawNote +
-      `<p class="r-check" aria-hidden="true"><i></i>Show hidden adapters</p>` +
-      table("Adapters", [nameCol, { name: "Type", get: (r) => r.kind }, ...numberCols], adapters);
-    const wifiTab = rawNote + table("Wi-Fi networks", [nameCol, ...numberCols], networks);
-
-    const pages = [summary, timeline, adaptersTab, wifiTab];
     root.innerHTML =
       `<p class="vh">Example data.</p>` +
-      `<div class="r-bar"><span>Period:</span><span class="r-combo">This month</span>` +
-      `<span class="r-range">${esc(dateOf(1).toLocaleDateString())} – ${esc(dateOf(lastDay).toLocaleDateString())}</span>` +
+      `<div class="r-bar"><label for="${id}-period">Period:</label>` +
+      `<span class="r-select"><select id="${id}-period">` +
+      PERIODS.map(([v, name]) => `<option value="${v}"${v === period ? " selected" : ""}>${esc(name)}</option>`).join("") +
+      `</select></span><span class="r-range"></span>` +
       `<span class="r-btns" aria-hidden="true"><span class="r-btn">Export CSV…</span><span class="r-btn">Clear all history…</span></span></div>` +
+      // The Custom range dialog (IDD_RANGE), shown over the report like the app's modal dialog.
+      `<form class="r-dialog" role="dialog" aria-labelledby="${id}-dlg" hidden><p class="r-dialog-title" id="${id}-dlg">Custom range</p>` +
+      `<label>From: <input type="date" name="from" required></label><label>To: <input type="date" name="to" required></label>` +
+      `<span class="r-dialog-btns"><button type="submit" class="r-btn">OK</button><button type="button" class="r-btn" data-cancel>Cancel</button></span></form>` +
       `<div class="r-tabs" role="tablist" aria-label="Report">` +
       TABS.map((t, i) => `<button type="button" role="tab" id="${id}-tab${i}" aria-controls="${id}-page${i}" ` +
         `aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${esc(t)}</button>`).join("") +
       `</div><div class="r-pages">` +
-      pages.map((p, i) => `<div class="r-page" role="tabpanel" id="${id}-page${i}" aria-labelledby="${id}-tab${i}" tabindex="0"${i ? " hidden" : ""}>${p}</div>`).join("") +
+      TABS.map((t, i) => `<div class="r-page" role="tabpanel" id="${id}-page${i}" aria-labelledby="${id}-tab${i}" tabindex="0"${i ? " hidden" : ""}></div>`).join("") +
       `</div>`;
 
+    const select = root.querySelector("select"), rangeEl = root.querySelector(".r-range");
+    const tabs = [...root.querySelectorAll('[role="tab"]')], panels = [...root.querySelectorAll('[role="tabpanel"]')];
+
+    function update() {
+      const range = period === "custom" ? custom : RANGES[period];
+      const [from, to, open] = range;
+      const g = granularityOf(range);
+      const rangeText = open ? "" : from === to ? shortDate(from) : `${shortDate(from)} – ${shortDate(to)}`; // IDS_RANGE_FORMAT
+      const periodName = period === "custom" ? rangeText : PERIODS.find(([v]) => v === period)[1];
+      rangeEl.textContent = rangeText;
+
+      const total = totalsOf(from, to);
+      const empty = sum(total) === 0;
+      let busiest = null;
+      for (let n = from; n <= to; n++) if (sum(dayTotals(n)) > 0 && (!busiest || sum(dayTotals(n)) > sum(dayTotals(busiest)))) busiest = n;
+      const byTotal = (a, b) => sum(b.t) - sum(a.t); // the default sort: Total, largest first
+      const adapters = ADAPTERS.map(([name, kind, s]) => ({ name, kind, t: split(total, s) })).sort(byTotal);
+      const networks = NETWORKS.map(([name, s]) => ({ name, t: split(total, s) })).sort(byTotal);
+
+      // IDS_RX_TX "↓ %s · ↑ %s", with a spoken version.
+      const detail = (t) =>
+        `<span class="r-muted" aria-hidden="true">↓ ${volume(t.rx)} · ↑ ${volume(t.tx)}</span>` +
+        `<span class="vh">Received ${volume(t.rx)}, sent ${volume(t.tx)}</span>`;
+
+      // Summary: Today, This week and This month, then the chosen period, highlighted.
+      const card = (title, t, on) =>
+        `<div class="r-card${on ? " is-on" : ""}"><span class="r-muted">${esc(title)}</span>` +
+        `<span class="r-value">${volume(sum(t))}</span>${detail(t)}</div>`;
+      const row = (label, value, muted) =>
+        `<div class="r-row"><span${muted ? ' class="r-muted"' : ""}>${label}</span><span>${value}</span></div>`;
+      const panel = (title, rows) =>
+        `<div class="r-panel"><p class="r-panel-title">${esc(title)}</p>${empty ? row(esc(NONE), "", true) : rows.join("")}</div>`;
+      panels[0].innerHTML =
+        `<div class="r-cards">${card("Today", dayTotals(TODAY))}${card("This week", totalsOf(WEEK, WEEK + 6))}` +
+        `${card("This month", totalsOf(...RANGES.thisMonth))}${card(periodName, total, true)}</div>` +
+        `<div class="r-panels">` +
+        panel("Busiest day", busiest ? [row(esc(longDate(dateOf(busiest))), volume(sum(dayTotals(busiest)))), row(detail(dayTotals(busiest)), "", true)] : []) +
+        panel("Top adapters", adapters.map((a) => row(esc(a.name), volume(sum(a.t))))) +
+        panel("Top Wi-Fi networks", networks.map((n) => row(esc(n.name), volume(sum(n.t))))) +
+        `</div>` +
+        `<p class="r-note">Usage is recorded only while Network Speed Monitor is running.</p>`;
+
+      // Timeline: received at the bottom of each bar, sent stacked on top; hover for the app's tooltip text.
+      const legend = `<div class="r-legend"><span><i class="r-sw r-rx"></i>Received</span><span><i class="r-sw r-tx"></i>Sent</span></div>`;
+      if (empty) {
+        panels[1].innerHTML = legend + `<p class="r-note">${esc(NONE)}</p>`;
+      } else {
+        const bars = barsOf(range, g);
+        const axis = chooseAxis(Math.max(...bars.map(sum)));
+        const axisMax = axis.step * axis.steps;
+        const pct = (v) => (100 * v / axisMax).toFixed(3) + "%";
+        const labels = bars.map((b, i) => axisLabel(bars, i, g));
+        const style = getComputedStyle(root);
+        measure.font = `${style.fontSize} ${style.fontFamily}`;
+        const labelW = Math.max(...labels.map((l) => measure.measureText(l).width)) + 8;
+        const plotW = (root.clientWidth || 600) - 6 * parseFloat(style.fontSize); // less the Y labels and padding
+        const step = labelStep(g, plotW / bars.length, labelW);
+        let grid = "", yLabels = "", cols = "", xLabels = "";
+        for (let k = 0; k <= axis.steps; k++) {
+          const at = pct(axis.step * k);
+          grid += `<i class="r-grid${k ? "" : " r-base"}" style="bottom:${at}"></i>`;
+          yLabels += `<span style="bottom:${at}">${volume(axis.step * k)}</span>`;
+        }
+        bars.forEach((b, i) => {
+          const tip = `${barTitle(b, g)}\nReceived: ${volume(b.rx)}\nSent: ${volume(b.tx)}\nTotal: ${volume(sum(b))}`;
+          cols += `<span class="r-slot" title="${esc(tip)}">` + (sum(b) > 0
+            ? `<span class="r-col" style="height:${pct(sum(b))}"><span class="r-tx" style="flex-grow:${b.tx}"></span><span class="r-rx" style="flex-grow:${b.rx}"></span></span>`
+            : "") + `</span>`;
+          xLabels += `<span>${i % step === 0 ? esc(labels[i]) : ""}</span>`;
+        });
+        const by = { hour: "hour", day: "day", month: "month" }[g];
+        panels[1].innerHTML = legend +
+          `<div class="r-chart" role="img" aria-label="${esc(`Usage by ${by}, ${periodName || "All time"}, example data. Total ${volume(sum(total))}.`)}">` +
+          `<div class="r-y">${yLabels}</div><div class="r-plot">${grid}${cols}</div><div class="r-x">${xLabels}</div></div>`;
+      }
+
+      // Adapters and Wi-Fi networks: list views sorted by Total.
+      const table = (label, columns, rows) => empty ? `<p class="r-note">${esc(NONE)}</p>` :
+        `<div class="r-table-wrap"><table class="r-table" aria-label="${esc(label)}"><thead><tr>` +
+        columns.map((c, i) => {
+          const sorted = i === columns.length - 1;
+          return `<th scope="col"${c.num ? ' class="r-num"' : ""}${sorted ? ' aria-sort="descending"' : ""}>` +
+            `${sorted ? '<i class="r-sort" aria-hidden="true"></i>' : ""}${esc(c.name)}</th>`;
+        }).join("") +
+        `</tr></thead><tbody>` +
+        rows.map((r) => `<tr>${columns.map((c) => `<td${c.num ? ' class="r-num"' : ""}>${esc(c.get(r))}</td>`).join("")}</tr>`).join("") +
+        `</tbody></table></div>`;
+      const nameCol = { name: "Name", get: (r) => r.name };
+      const numberCols = [
+        { name: "Received", num: true, get: (r) => volume(r.t.rx) },
+        { name: "Sent", num: true, get: (r) => volume(r.t.tx) },
+        { name: "Total", num: true, get: (r) => volume(sum(r.t)) },
+      ];
+      const rawNote = `<p class="r-raw">Each row is that adapter's or network's own traffic, so rows can add up to more than your internet total (a VPN and the Wi-Fi it runs over both count).</p>`;
+      panels[2].innerHTML = rawNote + `<p class="r-check" aria-hidden="true"><i></i>Show hidden adapters</p>` +
+        table("Adapters", [nameCol, { name: "Type", get: (r) => r.kind }, ...numberCols], adapters);
+      panels[3].innerHTML = rawNote + table("Wi-Fi networks", [nameCol, ...numberCols], networks);
+    }
+
+    // Choosing a period redraws the report; Custom range… asks for the dates first, starting from the range
+    // shown now, and swaps them if To comes before From, as the app's dialog does.
+    const dialog = root.querySelector(".r-dialog"), [fromIn, toIn] = dialog.querySelectorAll("input");
+    const iso = (n) => { const d = dateOf(n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+    const fromIso = (s) => { const [y, m, d] = s.split("-").map(Number); return dayNo(y, m - 1, d); };
+    let previous = period;
+    function closeDialog(apply) {
+      if (apply) {
+        let a = fromIso(fromIn.value), b = fromIso(toIn.value);
+        if (b < a) [a, b] = [b, a];
+        custom = [a, b];
+        period = previous = "custom";
+        update();
+      } else {
+        select.value = period = previous;
+      }
+      dialog.hidden = true;
+      select.focus({ preventScroll: true });
+    }
+    select.addEventListener("change", () => {
+      if (select.value !== "custom") { period = previous = select.value; update(); return; }
+      const [a, b] = period === "custom" ? custom : RANGES[period];
+      fromIn.value = iso(a); toIn.value = iso(Math.min(b, TODAY));
+      dialog.hidden = false;
+      fromIn.focus({ preventScroll: true });
+    });
+    dialog.addEventListener("submit", (e) => { e.preventDefault(); closeDialog(true); });
+    dialog.querySelector("[data-cancel]").addEventListener("click", () => closeDialog(false));
+    dialog.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeDialog(false); } // Esc closes only the dialog
+    });
+
     // Tabs: click, or Left/Right/Home/End with a roving tabindex; selection follows focus.
-    const tabs = [...root.querySelectorAll('[role="tab"]')];
-    const panels = [...root.querySelectorAll('[role="tabpanel"]')];
-    const select = (n) => tabs.forEach((t, i) => {
+    const selectTab = (n) => tabs.forEach((t, i) => {
       t.setAttribute("aria-selected", String(i === n));
       t.tabIndex = i === n ? 0 : -1;
       panels[i].hidden = i !== n;
     });
-    tabs.forEach((t, i) => t.addEventListener("click", () => select(i)));
+    tabs.forEach((t, i) => t.addEventListener("click", () => selectTab(i)));
     root.querySelector('[role="tablist"]').addEventListener("keydown", (e) => {
       const i = tabs.indexOf(document.activeElement);
       const n = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
       if (i < 0 || n === undefined) return;
       e.preventDefault();
       const next = (n + tabs.length) % tabs.length;
-      select(next);
+      selectTab(next);
       tabs[next].focus();
     });
+
+    update();
+    // The axis labels depend on the window's width: redraw when it changes (or when the hero popup opens).
+    let frame = 0;
+    const relayout = () => { cancelAnimationFrame(frame); frame = requestAnimationFrame(update); };
+    addEventListener("resize", relayout);
+    root.addEventListener("report:layout", relayout);
   }
   document.querySelectorAll("[data-report-example]").forEach(renderReport);
 
@@ -303,7 +449,7 @@
   layout();
   if (document.fonts) document.fonts.ready.then(layout);
 
-  // ---- Taskbar colour: the report follows it ----
+  // ---- Taskbar colour (the report follows it) and Windows version ----
 
   const themeButtons = document.querySelectorAll("[data-theme]");
   themeButtons.forEach((b) => b.addEventListener("click", () => {
@@ -312,6 +458,21 @@
     taskbar.classList.toggle("taskbar-light", light);
     report.classList.toggle("report-dark", !light);
   }));
+
+  const osButtons = document.querySelectorAll("[data-os]");
+  function setOs(os) {
+    osButtons.forEach((o) => o.setAttribute("aria-pressed", String(o.dataset.os === os)));
+    taskbar.classList.toggle("win11", os === "11");
+    lead();
+  }
+  osButtons.forEach((b) => b.addEventListener("click", () => setOs(b.dataset.os)));
+  // Start on the visitor's own version where the browser says it (Chromium's client hints: Windows 11 reports
+  // platform version 13 or later). Read locally; nothing is sent anywhere.
+  if (navigator.userAgentData && navigator.userAgentData.platform === "Windows") {
+    navigator.userAgentData.getHighEntropyValues(["platformVersion"]).then((v) => {
+      if (parseInt(v.platformVersion, 10) >= 13) setOs("11");
+    }).catch(() => {});
+  }
 
   // ---- Popups, like the real app: left-click opens the report, right-click opens the menu ----
 
@@ -358,6 +519,7 @@
     closeSubs();
     el.hidden = false;
     if (el === menu) placeMenu();
+    else el.querySelector("[data-report-example]").dispatchEvent(new Event("report:layout")); // measured while hidden
     el.classList.remove("opening"); void el.offsetWidth; el.classList.add("opening");
     note.style.visibility = "hidden";
     sync();

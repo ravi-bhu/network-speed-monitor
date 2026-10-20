@@ -71,6 +71,9 @@ h1 { margin: 0 0 1rem; font-weight: 800; font-size: clamp(2.25rem, 5vw, 3.5rem);
 .site-nav a { text-decoration: none; color: var(--muted); }
 .site-nav a:hover { color: var(--ink); text-decoration: underline; text-underline-offset: 4px; }
 .site-nav a[aria-current="page"] { color: var(--ink); font-weight: 500; }
+.site-nav { align-items: center; }
+.nav-gh { display: inline-flex; padding: .15rem; margin: -.15rem; } /* a bigger target than the 20 px mark */
+.nav-gh svg { width: 20px; height: 20px; fill: currentColor; }
 
 /* page body */
 main { padding-block: clamp(2rem, 6vw, 4rem); }
@@ -170,8 +173,53 @@ main.home { padding-block: 0; }
 .tb-app i { display: block; width: calc(22px * var(--s)); height: calc(22px * var(--s)); border-radius: 3px;
   background: color-mix(in srgb, var(--tb-text) 22%, transparent); }
 
-.tb-tray { position: relative; display: flex; align-items: stretch; flex: none; }
-.tb-icons { display: flex; align-items: stretch; }
+/* Windows 11: a 48 px bar with centred task buttons and a rounded search box. The readout's place, left of
+   the tray, and its colours are the same as on Windows 10. */
+.taskbar.win11 {
+  --tb-bg: #1c1c1c; --tb-accent: #4cc2ff;
+  height: calc(48px * var(--s)); box-shadow: inset 0 1px rgba(255, 255, 255, .08);
+}
+.taskbar.win11.taskbar-light { --tb-bg: #e8e8e8; --tb-accent: #0067c0; box-shadow: inset 0 1px rgba(0, 0, 0, .08); }
+.win11 .tb-left, .only-11, .tb-center { display: none; }
+.win11 .only-11 { display: flex; }
+.win11 .only-10 { display: none; }
+.win11 .tb-center {
+  display: flex; align-items: center; gap: calc(4px * var(--s));
+  position: absolute; top: 0; bottom: 0; left: 50%; transform: translateX(-50%);
+}
+.w11-btn { position: relative; display: grid; place-items: center; width: calc(40px * var(--s)); height: calc(40px * var(--s)); border-radius: calc(4px * var(--s)); flex: none; }
+.w11-start svg { width: calc(18px * var(--s)); height: calc(18px * var(--s)); fill: var(--tb-accent); }
+.w11-app i { display: block; width: calc(24px * var(--s)); height: calc(24px * var(--s)); border-radius: calc(5px * var(--s));
+  background: color-mix(in srgb, var(--tb-text) 22%, transparent); }
+.w11-app.is-active { background: color-mix(in srgb, var(--tb-text) 8%, transparent); }
+.w11-app.is-open::after, .w11-app.is-active::after { /* running-app indicator under the button */
+  content: ""; position: absolute; bottom: calc(1px * var(--s)); left: 50%; transform: translateX(-50%);
+  width: calc(6px * var(--s)); height: calc(3px * var(--s)); border-radius: 2px; background: var(--tb-muted);
+}
+.w11-app.is-active::after { width: calc(16px * var(--s)); background: var(--tb-accent); }
+.w11-search {
+  display: flex; align-items: center; gap: calc(8px * var(--s)); flex: none;
+  height: calc(32px * var(--s)); margin: 0 calc(4px * var(--s)); padding: 0 calc(40px * var(--s)) 0 calc(12px * var(--s));
+  border-radius: calc(16px * var(--s)); color: var(--tb-muted); white-space: nowrap;
+  background: color-mix(in srgb, var(--tb-text) 6%, transparent); border: 1px solid color-mix(in srgb, var(--tb-text) 9%, transparent);
+}
+.w11-search svg { width: calc(14px * var(--s)); height: calc(14px * var(--s)); stroke: var(--tb-text); fill: none; stroke-width: 1.4; }
+/* The centred buttons must clear the readout and tray: the search box shrinks to its icon below 100rem, and below
+   90rem the buttons move left, as the "Left" taskbar alignment puts them. */
+@media (max-width: 100rem) {
+  .w11-search { width: calc(40px * var(--s)); padding: 0; margin: 0; justify-content: center; border: 0; background: none; font-size: 0; }
+  .w11-search svg { width: calc(18px * var(--s)); height: calc(18px * var(--s)); }
+}
+@media (max-width: 90rem) {
+  .win11 .tb-center { position: static; transform: none; flex: 1; min-width: 0; overflow: hidden; padding-left: calc(4px * var(--s)); }
+}
+.win11 .tb-btn { padding: 0 calc(4px * var(--s)); }
+.win11 .tb-group { padding: 0 calc(4px * var(--s)); }
+.win11 .tb-clock { align-items: flex-end; text-align: right; padding: 0 calc(8px * var(--s)) 0 calc(6px * var(--s)); }
+.win11 .tb-bell { padding: 0 calc(12px * var(--s)) 0 calc(4px * var(--s)); }
+
+.tb-tray { position: relative; display: flex; align-items: stretch; flex: none; margin-left: auto; }
+.tb-icons, .tb-group { display: flex; align-items: stretch; }
 .tb-btn { display: flex; align-items: center; justify-content: center; padding: 0 calc(6px * var(--s)); }
 .tb-btn svg { width: calc(16px * var(--s)); height: calc(16px * var(--s)); stroke: var(--tb-text); fill: none; stroke-width: 1.2; }
 .tb-clock { flex-direction: column; line-height: 1.25; padding: 0 calc(8px * var(--s)); text-align: center; white-space: nowrap; }
@@ -270,13 +318,33 @@ main.home { padding-block: 0; }
 }
 .report-title button.cap { cursor: pointer; }
 .report-title button.cap:hover { background: #e81123; color: #ffffff; }
-.report-body { padding: 1em; overflow: auto; min-height: 0; }
+.report-body { position: relative; padding: 1em; overflow: auto; min-height: 0; }
 .r-bar { display: flex; flex-wrap: wrap; align-items: center; gap: .667em; }
-.r-combo {
-  display: inline-flex; align-items: center; justify-content: space-between; gap: 1em; min-width: 11em;
-  padding: .2em .5em; background: var(--r-field); border: 1px solid var(--r-field-edge);
+/* The Period drop-down list: a real select, drawn like the Win32 combo box. */
+.r-select { position: relative; display: inline-flex; }
+.r-select select {
+  -webkit-appearance: none; appearance: none; min-width: 11em; margin: 0; border-radius: 0; cursor: pointer;
+  padding: .2em 2em .2em .5em; font: inherit; color: var(--r-text); background: var(--r-field); border: 1px solid var(--r-field-edge);
 }
-.r-combo::after { content: ""; width: .45em; height: .45em; border: solid currentColor; border-width: 0 1px 1px 0; transform: translateY(-.15em) rotate(45deg); }
+.r-select select:focus-visible { outline: 2px solid var(--r-accent); outline-offset: 1px; }
+.r-select option { color: var(--r-text); background: var(--r-field); }
+.r-select::after {
+  content: ""; position: absolute; right: .7em; top: 50%; width: .45em; height: .45em; pointer-events: none;
+  border: solid var(--r-text); border-width: 0 1px 1px 0; transform: translateY(-70%) rotate(45deg);
+}
+/* The Custom range dialog, over the report like the app's modal one. */
+.r-dialog {
+  position: absolute; z-index: 2; top: 3.2em; left: 1em; display: grid; gap: .667em; padding: 1em 1.2em;
+  background: var(--r-bg); color: var(--r-text); border: 1px solid var(--r-field-edge); box-shadow: 0 8px 24px rgba(0, 0, 0, .3);
+}
+.r-dialog[hidden] { display: none; }
+.r-dialog-title { margin: 0; font-weight: 600; }
+.r-dialog label { display: flex; align-items: center; justify-content: space-between; gap: 1em; }
+.r-dialog input { font: inherit; color: var(--r-text); background: var(--r-field); border: 1px solid var(--r-field-edge); padding: .15em .4em; color-scheme: light; }
+.report-dark .r-dialog input { color-scheme: dark; }
+@media (prefers-color-scheme: dark) { .report-auto .r-dialog input { color-scheme: dark; } }
+.r-dialog-btns { display: flex; justify-content: flex-end; gap: .667em; margin-top: .333em; }
+.r-dialog .r-btn { font: inherit; color: var(--r-text); min-width: 6em; cursor: pointer; }
 .r-range { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--r-muted); }
 .r-btns { display: flex; gap: .667em; margin-left: auto; }
 .r-btn { padding: .2em .9em; background: var(--r-control); border: 1px solid var(--r-control-edge); white-space: nowrap; }
@@ -346,7 +414,7 @@ main.home { padding-block: 0; }
 }
 
 /* The report popup above the taskbar. */
-.popup.report { width: 42rem; max-height: calc(100svh - 40px * var(--s) - 2rem); }
+.popup.report { width: 42rem; max-height: calc(100svh - 48px * var(--s) - 2rem); }
 
 /* ---- Landing sections: one reading column, separated by space and a heading ---- */
 
@@ -449,7 +517,7 @@ code { font-family: ui-monospace, Consolas, monospace; font-size: .9em; overflow
   .hero { --head: 6rem; }
   .stage { --s: 1.15; grid-template-columns: minmax(0, 1fr); grid-template-areas: "note" "bar" "controls"; }
   .stage-controls { margin: .75rem 0 0 clamp(1rem, 4vw, 2.5rem); }
-  .tb-search, .tb-hide-narrow { display: none; }
+  .tb-search, .tb-hide-narrow, .win11 .tb-hide-narrow { display: none; }
   .note { font-size: .875rem; }
   .r-cards { --r-cols: 2; }
   .r-panels { --r-cols: 1; }
