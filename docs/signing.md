@@ -1,8 +1,8 @@
 # Code signing
 
 Releases are unsigned until the project is accepted by the
-[SignPath Foundation](https://signpath.org/) free signing program for open-source projects. Until then every
-release ships `SHA256SUMS.txt` next to the installers so you can verify a download:
+[SignPath Foundation](https://signpath.org/) free signing program for open-source projects (declined for now; see
+step 1 below). Every release ships `SHA256SUMS.txt` next to the installers so you can verify a download:
 
 ```
 Get-FileHash .\NetworkSpeedMonitor-<version>-x64-setup.exe -Algorithm SHA256
@@ -26,7 +26,10 @@ The policy itself (who approves signing, the privacy statement) is the "Code sig
 ## Turning signing on
 
 1. Apply to the SignPath Foundation for this repository (https://signpath.org/apply). _Applied 2026-10-19,
-   after v0.1.0; waiting for their reply._
+   after v0.1.0, and declined on 2026-10-20: the program wants public trust and visibility first, meaning
+   stars, forks, contributors, outside articles or discussions (Reddit, Stack Overflow, YouTube) and sustained
+   activity. Reapply once the project shows those. Until then releases stay unsigned (decided 2026-10-20;
+   details in issue #32)._
 2. In SignPath, create a project with a signing policy named `release-signing` and two artifact configurations:
    - `app`: a zip with `x64/NetworkSpeedMonitor.exe` and `arm64/NetworkSpeedMonitor.exe`; sign both exes.
    - `installers`: a zip with the `.exe` files at its root; sign them.

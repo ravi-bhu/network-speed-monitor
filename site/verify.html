@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Verify a download - Network Speed Monitor</title>
-<meta name="description" content="Why Network Speed Monitor's installers aren't signed yet, how to check an installer against the release's SHA256 hashes, and what the SmartScreen warning means.">
+<meta name="description" content="Why Network Speed Monitor's installers aren't signed, how to check an installer against the release's SHA256 hashes, and what the SmartScreen warning means.">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="assets/site.css">
 </head>
@@ -30,12 +30,12 @@
   <div class="wrap">
     <div class="read">
       <h1>Verify a download</h1>
-      <p class="intro">The installers aren’t code-signed yet. Until they are, you can check that the file you downloaded is exactly the one the release published, by comparing its SHA256 hash with the list that comes with every release.</p>
+      <p class="intro">The installers aren’t code-signed. You can still check that the file you downloaded is exactly the one the release published, by comparing its SHA256 hash with the list that comes with every release.</p>
 
       <section id="unsigned">
-        <h2>Why it isn’t signed yet</h2>
-        <p>Signing will come through the <a href="https://signpath.org/">SignPath Foundation</a>, which signs open-source projects for free. The project applied on 19 October 2026, after the first release, and is waiting for a reply. Until it’s approved, releases are unsigned.</p>
-        <p>Once signing is on, the app and both installers are signed before the hashes are written, so <code>SHA256SUMS.txt</code> lists the signed files.</p>
+        <h2>Why it isn’t signed</h2>
+        <p>Signing certificates cost money every year, and this is a free project. The <a href="https://signpath.org/">SignPath Foundation</a> signs open-source projects for free, but only once they’re widely known. The project applied on 19 October 2026 and was declined the next day for that reason, and will apply again once it’s better known.</p>
+        <p>When signing is on, the app and both installers will be signed before the hashes are written, so <code>SHA256SUMS.txt</code> will list the signed files.</p>
       </section>
 
       <section id="hash">
@@ -65,13 +65,13 @@
           <li>Select More info. The window then shows the file name and “Unknown publisher”.</li>
           <li>Select Run anyway.</li>
         </ol>
-        <p>If you’d rather not run an unsigned installer, wait for a signed release.</p>
+        <p>If you’d rather not run an unsigned installer, you can build the app yourself from the source; the <a href="https://github.com/ravi-bhu/network-speed-monitor#build">README</a> explains how.</p>
       </section>
 
       <section id="policy">
         <h2>Code signing policy</h2>
-        <p>Free code signing provided by <a href="https://about.signpath.io/">SignPath.io</a>, certificate by <a href="https://signpath.org/">SignPath Foundation</a>. Applied for; until it’s approved, releases are unsigned.</p>
-        <p>Once it’s approved, only the installers and the app built by this repository’s <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/.github/workflows/release.yml">release workflow</a>, from the tagged source, will be signed, and every signing request will be approved by hand.</p>
+        <p>Releases are currently unsigned.</p>
+        <p>When signing is on, only the installers and the app built by this repository’s <a href="https://github.com/ravi-bhu/network-speed-monitor/blob/main/.github/workflows/release.yml">release workflow</a>, from the tagged source, will be signed, and every signing request will be approved by hand.</p>
         <dl class="facts">
           <dt>Committers and reviewers</dt>
           <dd><a href="https://github.com/ravi-bhu">Ravi Bhushan</a></dd>
