@@ -116,9 +116,11 @@ std::vector<TimelineBar> ReportModel::Timeline(UtcRange r, int64_t nowUtc) {
         // From the first bucket at or after r.begin: no bar for an hour that started before the range.
         int64_t first = open ? byHour.begin()->first : LocalHourStart(r.begin, tz_);
         if (first < r.begin) first = NextHourStart(first, tz_);
-        for (int64_t h = first; h < r.end; h = NextHourStart(h, tz_)) {
+        for (int64_t h = first, next = 0; h < r.end; h = next) {
+            next = NextHourStart(h, tz_);
             TimelineBar b;
             b.start = tz_.ToLocal(h);
+            b.lengthSec = next - h;
             if (auto it = byHour.find(h); it != byHour.end()) b.totals = it->second;
             bars.push_back(b);
         }

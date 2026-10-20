@@ -1,6 +1,5 @@
 #include "ui/report_window.h"
 
-#include <dwmapi.h>
 #include <shellscalingapi.h>
 #include <shobjidl.h>
 #include <uxtheme.h>
@@ -36,8 +35,7 @@ constexpr wchar_t kWindowClass[] = L"NetworkSpeedMonitor.Report";
 constexpr wchar_t kCanvasClass[] = L"NetworkSpeedMonitor.ReportCanvas";
 constexpr UINT_PTR kRefreshTimer = 1;
 constexpr UINT kRefreshMs = 60'000;
-constexpr UINT WM_APP_PERIOD = WM_APP + 1;      // private to the report window: a period was picked
-constexpr DWORD kDwmUseImmersiveDarkMode = 20;  // DWMWA_USE_IMMERSIVE_DARK_MODE (Windows 10 20H1+)
+constexpr UINT WM_APP_PERIOD = WM_APP + 1;  // private to the report window: a period was picked
 
 enum ControlId : int {
     kIdPeriodLabel = 100,
@@ -235,6 +233,9 @@ std::vector<std::wstring> AxisLabels(const std::vector<TimelineBar>& bars, Granu
     std::vector<std::wstring> out;
     out.reserve(bars.size());
     const bool spansYears = !bars.empty() && bars.front().start.year != bars.back().start.year;
+    const std::wstring weekday = LoadStr(IDS_AXIS_WEEKDAY), monthDay = LoadStr(IDS_AXIS_MONTH_DAY),
+                       day = LoadStr(IDS_AXIS_DAY), monthYear = LoadStr(IDS_AXIS_MONTH_YEAR),
+                       month = LoadStr(IDS_AXIS_MONTH);
     for (size_t i = 0; i < bars.size(); ++i) {
         const LocalDateTime& t = bars[i].start;
         const SYSTEMTIME st = SystemTimeOf(t.year, t.month, t.day, t.hour, t.minute);
@@ -243,25 +244,31 @@ std::vector<std::wstring> AxisLabels(const std::vector<TimelineBar>& bars, Granu
                 out.push_back(TimeText(st, t.minute == 0 ? TIME_NOMINUTESORSECONDS : TIME_NOSECONDS, locale));
                 break;
             case Granularity::Day:
-                if (bars.size() <= 8) out.push_back(DateText(st, 0, L"ddd d", locale));
-                else out.push_back(DateText(st, 0, i == 0 || t.day == 1 ? L"MMM d" : L"d", locale));
+                if (bars.size() <= 8) out.push_back(DateText(st, 0, weekday.c_str(), locale));
+                else out.push_back(DateText(st, 0, (i == 0 || t.day == 1 ? monthDay : day).c_str(), locale));
                 break;
             case Granularity::Month:
             default:
-                out.push_back(DateText(st, 0, spansYears && (i == 0 || t.month == 1) ? L"MMM yyyy" : L"MMM", locale));
+                out.push_back(
+                    DateText(st, 0, (spansYears && (i == 0 || t.month == 1) ? monthYear : month).c_str(), locale));
                 break;
         }
     }
     return out;
 }
 
-std::wstring BarTitle(const LocalDateTime& start, Granularity g, const wchar_t* locale) {
+std::wstring BarTitle(const TimelineBar& bar, Granularity g, const wchar_t* locale) {
+    const LocalDateTime& start = bar.start;
     const SYSTEMTIME st = SystemTimeOf(start.year, start.month, start.day, start.hour, start.minute);
     switch (g) {
         case Granularity::Hour: {
-            // Buckets end on the next full local hour (a short one after a part-hour DST change starts
-            // at :30 or :45). Only the time of the end is shown, so the date it falls on doesn't matter.
-            const SYSTEMTIME end = SystemTimeOf(start.year, start.month, start.day, (start.hour + 1) % 24, 0);
+            // The bucket's end on the clock it started on: usually the next full hour, but a part-hour DST
+            // change ends one early (Chatham's 02:00 bucket at 02:45, when clocks jump to 03:45). With no
+            // length, the next full hour. Only the time of the end is shown, so its date doesn't matter.
+            const int startMinute = start.hour * 60 + start.minute;
+            const int endMinute =
+                bar.lengthSec > 0 ? startMinute + static_cast<int>(bar.lengthSec / 60) : (start.hour + 1) * 60;
+            const SYSTEMTIME end = SystemTimeOf(start.year, start.month, start.day, endMinute / 60 % 24, endMinute % 60);
             return FillPlaceholders(LoadStr(IDS_BAR_HOUR), {DateText(st, DATE_LONGDATE, nullptr, locale),
                                                             TimeText(st, TIME_NOSECONDS, locale),
                                                             TimeText(end, TIME_NOSECONDS, locale)});
@@ -274,6 +281,15 @@ std::wstring BarTitle(const LocalDateTime& start, Granularity g, const wchar_t* 
 
 std::wstring LongDate(LocalDate d, const wchar_t* locale) {
     return DateText(SystemTimeOf(d.year, d.month, d.day), DATE_LONGDATE, nullptr, locale);
+}
+
+std::vector<std::wstring> SummaryNotices(const std::filesystem::path& recoveredFile, bool storeHealthy) {
+    std::vector<std::wstring> notices;
+    if (!recoveredFile.empty()) {
+        notices.push_back(FillPlaceholders(LoadStr(IDS_NOTE_CORRUPT), {recoveredFile.wstring()}));
+    }
+    if (!storeHealthy) notices.push_back(LoadStr(IDS_NOTE_UNHEALTHY));
+    return notices;
 }
 
 // ---- ReportWindow ----
@@ -444,8 +460,7 @@ void ReportWindow::ApplyTheme() {
     backgroundBrush_ = CreateSolidBrush(palette_.background);
 
     const bool dark = theme_ == ReportTheme::Dark;
-    BOOL useDark = dark ? TRUE : FALSE;
-    DwmSetWindowAttribute(hwnd_, kDwmUseImmersiveDarkMode, &useDark, sizeof(useDark));
+    SetDarkTitleBar(hwnd_, dark);
     const wchar_t* controls = dark ? L"DarkMode_Explorer" : nullptr;
     for (HWND w : {export_, clearAll_, showHiddenBox_, tooltip_}) SetWindowTheme(w, controls, nullptr);
     SetWindowTheme(period_, dark ? L"DarkMode_CFD" : nullptr, nullptr);
@@ -596,10 +611,7 @@ void ReportWindow::Refresh() {
     };
     const std::wstring none = LoadStr(IDS_NO_USAGE), unknownWifi = LoadStr(IDS_UNKNOWN_WIFI);
     SummaryView view;
-    if (!corruptFile_.empty()) {
-        view.notices.push_back(FillPlaceholders(LoadStr(IDS_NOTE_CORRUPT), {corruptFile_.wstring()}));
-    }
-    if (!store_.Healthy()) view.notices.push_back(LoadStr(IDS_NOTE_UNHEALTHY));
+    view.notices = SummaryNotices(corruptFile_, store_.Healthy());
     const std::wstring periodName = periodIndex_ == kCustomPeriod ? rangeText : LoadStr(kPeriods[periodIndex_].name);
     view.cards = {card(LoadStr(IDS_PERIOD_TODAY), s.today, false),
                   card(LoadStr(IDS_PERIOD_THIS_WEEK), s.thisWeek, false),
@@ -753,8 +765,9 @@ void ReportWindow::ShowRowMenu(HWND list, int item, POINT screenPt) {
                     LoadStr(IDS_MENU_CLEAR_NETWORK).c_str());
     }
     const UINT align = GetSystemMetrics(SM_MENUDROPALIGNMENT) ? TPM_RIGHTALIGN : TPM_LEFTALIGN;
-    const UINT cmd = static_cast<UINT>(
-        TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | align, screenPt.x, screenPt.y, hwnd_, nullptr));
+    const UINT cmd = pickRowCommand ? pickRowCommand(menu)
+                                    : static_cast<UINT>(TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON | align,
+                                                                         screenPt.x, screenPt.y, hwnd_, nullptr));
     DestroyMenu(menu);
     if (!hwnd_) return;
 
@@ -764,7 +777,8 @@ void ReportWindow::ShowRowMenu(HWND list, int item, POINT screenPt) {
             for (const auto& a : store_.Adapters()) {
                 if (a.id == row.id && !a.name.empty()) windowsName = a.name;
             }
-            const auto renamed = RenameDialog(hwnd_, row.name, windowsName, theme_ == ReportTheme::Dark);
+            const auto renamed = askNewName ? askNewName(row.name)
+                                            : RenameDialog(hwnd_, row.name, windowsName, theme_ == ReportTheme::Dark);
             if (!renamed || !hwnd_) return;
             store_.SetFriendlyName(row.id, *renamed);  // empty restores the Windows name
             AdaptersChanged();
@@ -938,7 +952,7 @@ LRESULT ReportWindow::DrawDarkCheckbox(NMCUSTOMDRAW* cd) {
 
 std::wstring ReportWindow::BarTip(int index) const {
     const TimelineBar& bar = timelineView_.bars[static_cast<size_t>(index)];
-    return BarTitle(bar.start, timelineView_.granularity) + L"\r\n" +
+    return BarTitle(bar, timelineView_.granularity) + L"\r\n" +
            FillPlaceholders(LoadStr(IDS_TIP_RECEIVED), {FormatVolume(bar.totals.rx)}) + L"\r\n" +
            FillPlaceholders(LoadStr(IDS_TIP_SENT), {FormatVolume(bar.totals.tx)}) + L"\r\n" +
            FillPlaceholders(LoadStr(IDS_TIP_TOTAL), {FormatVolume(bar.totals.Total())});

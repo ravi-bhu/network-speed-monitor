@@ -29,6 +29,9 @@ enum class Granularity { Hour, Day, Month };
 struct TimelineBar {
     LocalDateTime start;
     Totals totals;
+    // Hour bars: the bucket's length, under an hour next to a part-hour DST change (Chatham's 02:00 bucket
+    // lasts 45 minutes). 0 for day and month bars.
+    int64_t lengthSec = 0;
 };
 
 struct SummaryData {

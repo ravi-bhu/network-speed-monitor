@@ -47,6 +47,10 @@ public:
     std::function<void()> beforeQuery;          // App::FlushNow
     std::function<void(RECT)> onBoundsChanged;  // the window was moved or resized (screen px)
     std::function<void()> onAdaptersChanged;    // a rename or hide/unhide was stored
+    // Tests only: stand-ins for a table row's context menu (returns the chosen item's id, 0 = none) and for the
+    // Rename dialog (returns the new name, nullopt = cancelled), which can't be shown in a test run.
+    std::function<UINT(HMENU)> pickRowCommand;
+    std::function<std::optional<std::wstring>(const std::wstring& current)> askNewName;
 
 private:
     struct TableState;
@@ -158,7 +162,12 @@ std::wstring RangeLabel(LocalDate first, LocalDate last, const wchar_t* locale =
 // and in January when the bars span more than one year).
 std::vector<std::wstring> AxisLabels(const std::vector<TimelineBar>& bars, Granularity g,
                                      const wchar_t* locale = nullptr);
-std::wstring BarTitle(const LocalDateTime& start, Granularity g, const wchar_t* locale = nullptr);
+// The tooltip's first line: the hour (from its start to its end, after `lengthSec`), day or month a bar covers.
+std::wstring BarTitle(const TimelineBar& bar, Granularity g, const wchar_t* locale = nullptr);
 std::wstring LongDate(LocalDate d, const wchar_t* locale = nullptr);
+
+// The Summary tab's banners: the database was unreadable and moved to `recoveredFile` (empty = it wasn't), and
+// the store failed a read or write since it last succeeded (!storeHealthy).
+std::vector<std::wstring> SummaryNotices(const std::filesystem::path& recoveredFile, bool storeHealthy);
 
 }  // namespace nsm

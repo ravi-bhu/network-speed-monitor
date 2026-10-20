@@ -58,6 +58,11 @@ BEGIN
     IDS_TIP_RECEIVED "Received: %s"
     IDS_TIP_SENT "Sent: %s"
     IDS_TIP_TOTAL "Total: %s"
+    IDS_AXIS_WEEKDAY "ddd d"
+    IDS_AXIS_MONTH_DAY "MMM d"
+    IDS_AXIS_DAY "d"
+    IDS_AXIS_MONTH_YEAR "MMM yyyy"
+    IDS_AXIS_MONTH "MMM"
 
     IDS_COL_NAME "Name"
     IDS_COL_TYPE "Type"
