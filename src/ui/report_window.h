@@ -80,7 +80,6 @@ private:
 
     void PaintCanvas(HWND canvas, HDC dc);
     void PaintTabs(HWND tabs);
-    LRESULT DrawDarkCheckbox(NMCUSTOMDRAW* cd);
     void SetHot(int index, bool fromKeyboard);
     std::wstring BarTip(int index) const;
     ReportTheme CurrentTheme() const;
@@ -146,6 +145,10 @@ struct TableRow {
 void SortRows(std::vector<TableRow>& rows, TableSort sort);
 
 std::wstring DefaultCsvName(LocalDate today);  // network-usage-YYYY-MM-DD.csv
+
+// The Summary always shows cards for Today, This week and This month (0, 1, 2). When the picked period is one
+// of them its card is highlighted instead of adding a period card that repeats it; otherwise -1.
+int FixedSummaryCard(Period p);
 
 // Replaces each "%s" in `format` with the next argument (missing ones with nothing); inserted text is not rescanned.
 std::wstring FillPlaceholders(const std::wstring& format, std::initializer_list<std::wstring> args);

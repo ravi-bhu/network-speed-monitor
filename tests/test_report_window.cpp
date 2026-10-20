@@ -2,6 +2,7 @@
 
 #include <windows.h>
 #include <commctrl.h>
+#include <windowsx.h>
 
 #include <ctime>
 #include <filesystem>
@@ -109,6 +110,16 @@ TEST_CASE("SortRows orders by the chosen column in either direction") {
 TEST_CASE("DefaultCsvName uses the local date") {
     CHECK(DefaultCsvName(LocalDate{2026, 3, 7}) == L"network-usage-2026-03-07.csv");
     CHECK(DefaultCsvName(LocalDate{2026, 10, 19}) == L"network-usage-2026-10-19.csv");
+}
+
+TEST_CASE("FixedSummaryCard: Today, This week and This month are already on the Summary") {
+    CHECK(FixedSummaryCard(Period::Today) == 0);
+    CHECK(FixedSummaryCard(Period::ThisWeek) == 1);
+    CHECK(FixedSummaryCard(Period::ThisMonth) == 2);
+    for (Period p : {Period::Yesterday, Period::LastWeek, Period::LastMonth, Period::Last30Days, Period::ThisYear,
+                     Period::AllTime, Period::Custom}) {
+        CHECK(FixedSummaryCard(p) == -1);
+    }
 }
 
 TEST_CASE("FillPlaceholders replaces each %s in turn and never rescans inserted text") {
@@ -336,4 +347,109 @@ TEST_CASE("ReportWindow fills its tables, follows Show hidden and column sorting
         if (fits) CHECK(Same(reopened, movedActual));
         w.Close();
     }
+}
+
+namespace {
+
+struct ToggleDraw {
+    LRESULT result = 0;
+    COLORREF inside = CLR_INVALID;  // inside the check box, clear of the tick
+};
+
+// Sends the check box's CDDS_PREPAINT custom draw through `send`, into a memory DC the size of the box.
+template <class Send>
+ToggleDraw PaintToggle(HWND button, Send send) {
+    RECT rc{};
+    GetClientRect(button, &rc);
+    REQUIRE(rc.right > 0);
+    REQUIRE(rc.bottom > 0);
+    HDC screen = GetDC(nullptr);
+    HDC dc = CreateCompatibleDC(screen);
+    HBITMAP bitmap = CreateCompatibleBitmap(screen, rc.right, rc.bottom);
+    ReleaseDC(nullptr, screen);
+    HGDIOBJ old = SelectObject(dc, bitmap);
+    NMCUSTOMDRAW cd{};
+    cd.hdr.hwndFrom = button;
+    cd.hdr.idFrom = static_cast<UINT_PTR>(GetDlgCtrlID(button));
+    cd.hdr.code = NM_CUSTOMDRAW;
+    cd.dwDrawStage = CDDS_PREPAINT;
+    cd.hdc = dc;
+    cd.rc = rc;
+    ToggleDraw out;
+    out.result = send(cd);
+    const int dpi = static_cast<int>(GetDpiForWindow(button));
+    const int size = MulDiv(13, dpi, 96), inset = MulDiv(3, dpi, 96);
+    out.inside = GetPixel(dc, rc.left + inset, rc.top + (rc.bottom - rc.top - size) / 2 + inset);
+    SelectObject(dc, old);
+    DeleteObject(bitmap);
+    DeleteDC(dc);
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("Dark report draws Show hidden adapters as the Settings dialog's box, not the white theme glyph" *
+          doctest::test_suite("integration")) {
+    TempStore t;
+    ReportWindow w(GetModuleHandleW(nullptr), t.store);
+    auto open = [&](ReportTheme theme) {  // the "Show hidden adapters" box
+        w.SetThemeOverride(theme);
+        w.Show(2);
+        REQUIRE(w.IsOpen());
+        HWND hwnd = FindWindowW(L"NetworkSpeedMonitor.Report", nullptr);
+        REQUIRE(hwnd);
+        HWND box = FindWindowExW(hwnd, nullptr, WC_BUTTONW, LoadStr(IDS_SHOW_HIDDEN).c_str());
+        REQUIRE(box);
+        return box;
+    };
+    auto viaReport = [](NMCUSTOMDRAW& cd) {
+        return SendMessageW(GetParent(cd.hdr.hwndFrom), WM_NOTIFY, cd.hdr.idFrom, reinterpret_cast<LPARAM>(&cd));
+    };
+    const ReportPalette dark = PaletteFor(ReportTheme::Dark);
+
+    HWND box = open(ReportTheme::Dark);
+    Button_SetCheck(box, BST_UNCHECKED);
+    ToggleDraw drawn = PaintToggle(box, viaReport);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.surface);  // an empty dark box, not a white square
+    Button_SetCheck(box, BST_CHECKED);
+    drawn = PaintToggle(box, viaReport);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.accent);
+    w.Close();
+
+    // High Contrast keeps the system-drawn control.
+    box = open(ReportTheme::HighContrast);
+    CHECK(PaintToggle(box, viaReport).result == CDRF_DODEFAULT);
+    w.Close();
+}
+
+TEST_CASE("DrawDarkToggle draws an outlined box, accent-filled when checked, and leaves push buttons alone" *
+          doctest::test_suite("integration")) {
+    const ReportPalette dark = PaletteFor(ReportTheme::Dark);
+    HBRUSH background = CreateSolidBrush(dark.background);
+    auto direct = [&](NMCUSTOMDRAW& cd) { return DrawDarkToggle(&cd, dark, background); };
+    const HINSTANCE module = GetModuleHandleW(nullptr);
+    HWND parent = CreateWindowExW(0, WC_STATICW, L"", WS_POPUP, 0, 0, 200, 60, nullptr, nullptr, module, nullptr);
+    REQUIRE(parent);
+    auto button = [&](const wchar_t* text, DWORD style, int y) {
+        return CreateWindowExW(0, WC_BUTTONW, text, WS_CHILD | WS_VISIBLE | style, 0, y, 200, 24, parent, nullptr,
+                               module, nullptr);
+    };
+    HWND box = button(L"Box", BS_AUTOCHECKBOX, 0);
+    HWND push = button(L"Push", BS_PUSHBUTTON, 30);
+    REQUIRE(box);
+    REQUIRE(push);
+
+    ToggleDraw drawn = PaintToggle(box, direct);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.surface);
+    Button_SetCheck(box, BST_CHECKED);
+    drawn = PaintToggle(box, direct);
+    CHECK(drawn.result == CDRF_SKIPDEFAULT);
+    CHECK(drawn.inside == dark.accent);
+    CHECK(PaintToggle(push, direct).result == CDRF_DODEFAULT);
+
+    DestroyWindow(parent);
+    DeleteObject(background);
 }
