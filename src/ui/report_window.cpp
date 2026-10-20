@@ -817,8 +817,9 @@ void ReportWindow::ExportCsvFile() {
     if (beforeQuery) beforeQuery();
     const TimeZone tz = TimeZone::Local();
     // The selected period, every adapter and network: the same rows all four tabs are built from.
-    if (!ExportCsv(file, store_, CurrentRange(NowUtc(), tz, FirstDayOfWeekFromLocale()), tz) && hwnd_) {
-        ShowError(hwnd_, LoadStr(IDS_EXPORT_FAILED));
+    const CsvExportResult result = ExportCsv(file, store_, CurrentRange(NowUtc(), tz, FirstDayOfWeekFromLocale()), tz);
+    if (result != CsvExportResult::Ok && hwnd_) {
+        ShowError(hwnd_, LoadStr(result == CsvExportResult::ReadFailed ? IDS_EXPORT_READ_FAILED : IDS_EXPORT_FAILED));
     }
 }
 

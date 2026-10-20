@@ -175,7 +175,7 @@ Already checked automatically on Windows 10 22H2 (build 19045, 1920×1080 at 125
 - [ ] **Mouse on the chart:** hovering a bar shows its tooltip by the pointer, and it hides when the pointer leaves the chart or the window loses focus.
 - [ ] **Period list with the mouse:** open the list and pick Custom range…; the dialog opens once. Picking Custom range… again while it's selected reopens the dialog with the last range. Cancel keeps the previous period.
 - [ ] **Clear all history…** on a throwaway database: after Delete, every tab is empty and new traffic starts appearing within a minute.
-- [ ] **Excel:** open an exported CSV in Excel. The columns are start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes, and "Café Corner, 5G"-style names stay in one cell.
+- [ ] **Excel:** open an exported CSV in Excel. The columns are start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes, start_utc, and "Café Corner, 5G"-style names stay in one cell.
 - [ ] **Overlay click:** left-click the readout. The report opens in front, and a second click brings it forward instead of opening another.
 - [ ] **DPI:** move the report between monitors with different scaling, or change scaling while it's open. Text and controls rescale, and the chart stays crisp.
 - [ ] **Release memory:** with a Release build and your real data, open the report, visit every tab, close it, then wait a minute. Task Manager's "Memory (private working set)" is back under 15 MB.

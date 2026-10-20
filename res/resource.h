@@ -98,6 +98,7 @@
 #define IDS_RANGE_TITLE 270
 #define IDS_RANGE_FROM 271
 #define IDS_RANGE_TO 272
+#define IDS_EXPORT_READ_FAILED 273  // the store is unhealthy, so the export wrote nothing
 
 // Settings dialog (Task 16)
 #define IDS_SET_TITLE 280

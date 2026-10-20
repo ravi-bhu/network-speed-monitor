@@ -24,8 +24,11 @@ usage report. It makes no network connections and sends nothing anywhere.
 ## CSV export
 
 **Export CSV…** in the report saves the selected period, for every adapter and network, as UTF-8 with columns
-`start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes`
-(one row per hour, or per day for history older than 90 days).
+`start_local, granularity, series, adapter_id, adapter_name, adapter_kind, network, received_bytes, sent_bytes,
+start_utc` (one row per hour, or per day for history older than 90 days).
+
+`start_utc` is when an hour starts in UTC (`2026-11-01 09:00`). It tells apart the two hours that share a
+`start_local` on the day the clocks go back. It is empty on daily rows, which are calendar days in local time.
 
 The `series` column says what a row counts. `internet` rows are your internet traffic, through whichever
 adapter carried it; `adapter` rows are each adapter's own traffic, so a VPN and the Wi-Fi it runs over both

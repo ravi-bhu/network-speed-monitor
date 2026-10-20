@@ -138,6 +138,7 @@
               <tr><td><code>network</code></td><td>The name Windows gives the network; for Wi-Fi, usually the network’s own name. Empty when Windows has no name for it.</td></tr>
               <tr><td><code>received_bytes</code></td><td>Bytes received in that hour or day.</td></tr>
               <tr><td><code>sent_bytes</code></td><td>Bytes sent in that hour or day.</td></tr>
+              <tr><td><code>start_utc</code></td><td>When the hour starts in UTC: <code>2026-11-01 09:00</code>. On the day the clocks go back, two hours share a <code>start_local</code>, and this tells them apart. Empty on daily rows.</td></tr>
             </tbody>
           </table>
         </div>
