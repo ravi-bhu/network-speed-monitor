@@ -43,6 +43,7 @@ private:
     HGDIOBJ oldBitmap_ = nullptr;
     SIZE dibSize_{};
     ID2D1DCRenderTarget* rt_ = nullptr;
+    OverlayBrushes brushes_;  // belong to rt_
 };
 
 }  // namespace nsm

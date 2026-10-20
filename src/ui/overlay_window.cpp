@@ -59,7 +59,7 @@ void OverlayWindow::Show(const OverlayPlacement& p, const OverlayContent& c) {
     if (FAILED(rt_->BindDC(memDc_, &bounds))) return;
     OverlayContent content = c;
     content.showGraph = p.showGraph;
-    RenderOverlay(rt_, size, content);
+    RenderOverlay(rt_, brushes_, size, content);
 
     POINT dst{p.rect.left, p.rect.top};
     POINT src{0, 0};
