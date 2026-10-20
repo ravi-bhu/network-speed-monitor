@@ -89,9 +89,43 @@ const Text& GetText() {
     return text;
 }
 
-std::wstring Prefix(bool upload, bool letters) {
-    if (letters) return LoadStr(upload ? IDS_LABEL_UP : IDS_LABEL_DOWN) + L" ";
-    return upload ? L"↑ " : L"↓ ";
+const std::wstring& Prefix(bool upload, bool letters) {
+    // The STRINGTABLE doesn't change while the app runs, so the labels are loaded once, not every frame.
+    static const std::wstring upLetters = LoadStr(IDS_LABEL_UP) + L" ";
+    static const std::wstring downLetters = LoadStr(IDS_LABEL_DOWN) + L" ";
+    static const std::wstring upArrow = L"↑ ", downArrow = L"↓ ";
+    if (letters) return upload ? upLetters : downLetters;
+    return upload ? upArrow : downArrow;
+}
+
+const std::wstring& NoValue() {
+    static const std::wstring text = LoadStr(IDS_NO_VALUE);
+    return text;
+}
+
+// Makes the brushes on their first frame and recolours them when the taskbar theme changes.
+// Returns the first creation failure, with no brushes kept, so the next frame tries again.
+HRESULT PrepareBrushes(ID2D1RenderTarget* rt, OverlayBrushes& b, bool light) {
+    const Palette& pal = light ? kLight : kDark;
+    if (!b.text || !b.upload || !b.download || !b.muted) {
+        b = {};
+        HRESULT hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.text), &b.text);
+        if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.upload), &b.upload);
+        if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.download), &b.download);
+        if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.muted), &b.muted);
+        if (FAILED(hr)) {
+            b = {};
+            return hr;
+        }
+        b.light = light;
+    } else if (b.light != light) {
+        b.text->SetColor(D2D1::ColorF(pal.text));
+        b.upload->SetColor(D2D1::ColorF(pal.upload));
+        b.download->SetColor(D2D1::ColorF(pal.download));
+        b.muted->SetColor(D2D1::ColorF(pal.muted));
+        b.light = light;
+    }
+    return S_OK;
 }
 
 float WidthOf(const Text& t, const std::wstring& s) {
@@ -107,7 +141,7 @@ std::wstring FormatValue(double bytesPerSec, UnitMode mode, bool compact) {
 float WidestTextWidth(const Text& t, bool letters, bool compact) {
     // Every shape the formatter can print, in both unit modes and at every unit scale:
     // "8.88 X", "88.8 X" and "888 X" (tabular figures, so 8 stands for any digit).
-    std::vector<std::wstring> values{LoadStr(IDS_NO_VALUE)};
+    std::vector<std::wstring> values{NoValue()};
     for (UnitMode mode : {UnitMode::Bytes, UnitMode::Bits}) {
         const double perByte = mode == UnitMode::Bits ? 8.0 : 1.0;
         for (double scale = 1; scale <= 1e9; scale *= 1000) {
@@ -116,7 +150,7 @@ float WidestTextWidth(const Text& t, bool letters, bool compact) {
     }
     float widest = 0;
     for (bool upload : {true, false}) {
-        const std::wstring prefix = Prefix(upload, letters);
+        const std::wstring& prefix = Prefix(upload, letters);
         for (const std::wstring& v : values) widest = std::max(widest, WidthOf(t, prefix + v));
     }
     return std::ceil(widest) + 2 * kTextPad;
@@ -151,6 +185,19 @@ void DrawSeries(ID2D1RenderTarget* rt, const std::vector<double>& values, double
 
 std::wstring LinePrefix(bool upload, bool letters) { return Prefix(upload, letters); }
 
+size_t PrefixColourLength(const std::wstring& prefix) {
+    // A translated label may end in its own (no-break) space; only the visible label is coloured.
+    const size_t end = prefix.find_last_not_of(L" \t\u00A0\u202F");
+    return end == std::wstring::npos ? 0 : end + 1;
+}
+
+float LineTopDip(float height, float lineHeight, float scale, int line) {
+    const auto snap = [scale](float dip) { return std::round(dip * scale) / scale; };
+    // Snap each top on its own: a snapped first top plus a fractional line height falls between pixels.
+    const float first = snap((height - 2 * lineHeight) / 2);
+    return line == 0 ? first : snap(first + static_cast<float>(line) * lineHeight);
+}
+
 float LineWidthDip(const std::wstring& line) {
     const Text& t = GetText();
     return t.ok ? WidthOf(t, line) : 0.0f;
@@ -166,51 +213,45 @@ OverlaySizes MeasureOverlay(unsigned dpi, bool letters) {
             ToPixels(compact, dpi)};
 }
 
-HRESULT RenderOverlay(ID2D1DCRenderTarget* rt, SIZE size, const OverlayContent& c) {
+HRESULT RenderOverlay(ID2D1DCRenderTarget* rt, OverlayBrushes& brushes, SIZE size, const OverlayContent& c) {
     const Text& t = GetText();
     const float dpi = static_cast<float>(c.dpi ? c.dpi : 96);
     const float scale = dpi / 96.0f;
     const float width = static_cast<float>(size.cx) / scale;
     const float height = static_cast<float>(size.cy) / scale;
-    const Palette& pal = c.light ? kLight : kDark;
 
     rt->SetDpi(dpi, dpi);
     rt->SetTextAntialiasMode(D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);  // no ClearType on a transparent surface
     rt->BeginDraw();
     rt->Clear(D2D1::ColorF(0, 0, 0, 1.0f / 255.0f));  // alpha 1: invisible, but the whole rect takes clicks
 
-    ComPtr<ID2D1SolidColorBrush> textBrush, upBrush, downBrush, mutedBrush;
-    HRESULT hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.text), &textBrush);
-    if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.upload), &upBrush);
-    if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.download), &downBrush);
-    if (SUCCEEDED(hr)) hr = rt->CreateSolidColorBrush(D2D1::ColorF(pal.muted), &mutedBrush);
+    const HRESULT hr = PrepareBrushes(rt, brushes, c.light);
 
     float textLeft = 0;
     if (SUCCEEDED(hr) && c.showGraph && c.history) {
         const float top = (height - kGraphHeight) / 2;
         const D2D1_RECT_F box{0, top, kGraphWidth, top + kGraphHeight};
         const double max = c.history->Max();
-        DrawSeries(rt, c.history->Rx(), max, box, downBrush.Get());
-        DrawSeries(rt, c.history->Tx(), max, box, upBrush.Get());
+        DrawSeries(rt, c.history->Rx(), max, box, brushes.download.Get());
+        DrawSeries(rt, c.history->Tx(), max, box, brushes.upload.Get());
         textLeft = kGraphWidth + kGraphGap;
     }
 
     if (SUCCEEDED(hr) && t.ok) {
         const float textWidth = std::max(0.0f, width - textLeft - 2 * kTextPad);
-        // Snap the first baseline box to a whole device pixel so text stays crisp.
-        const float y0 = std::round((height - 2 * t.lineHeight) / 2 * scale) / scale;
         for (bool upload : {true, false}) {
             const std::wstring value = c.speed ? FormatValue(upload ? c.speed->tx : c.speed->rx, c.units, c.compact)
-                                               : LoadStr(IDS_NO_VALUE);
-            const std::wstring prefix = Prefix(upload, c.letters);
+                                               : NoValue();
+            const std::wstring& prefix = Prefix(upload, c.letters);
             auto layout = MakeLayout(t, prefix + value, textWidth);
             if (!layout) continue;
-            ID2D1Brush* series = upload ? upBrush.Get() : downBrush.Get();
-            // Arrow in the series colour; "U:"/"D:" in the muted colour (the trailing space needs no colour).
-            layout->SetDrawingEffect(c.letters ? mutedBrush.Get() : series,
-                                     {0, static_cast<UINT32>(prefix.size() - 1)});
-            const float y = y0 + (upload ? 0 : t.lineHeight);
-            rt->DrawTextLayout({textLeft + kTextPad, y}, layout.Get(), textBrush.Get(),
+            ID2D1Brush* series = upload ? brushes.upload.Get() : brushes.download.Get();
+            // Arrow in the series colour; "U:"/"D:" in the muted colour (the separator needs no colour).
+            layout->SetDrawingEffect(c.letters ? brushes.muted.Get() : series,
+                                     {0, static_cast<UINT32>(PrefixColourLength(prefix))});
+            // Each line on a whole device pixel so text stays crisp.
+            const float y = LineTopDip(height, t.lineHeight, scale, upload ? 0 : 1);
+            rt->DrawTextLayout({textLeft + kTextPad, y}, layout.Get(), brushes.text.Get(),
                                D2D1_DRAW_TEXT_OPTIONS_NONE);
         }
     }

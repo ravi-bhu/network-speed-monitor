@@ -60,7 +60,7 @@ void OverlayWindow::Show(const OverlayPlacement& p, const OverlayContent& c) {
     OverlayContent content = c;
     content.showGraph = p.showGraph;
     // A failed draw leaves the DIB stale or blank: keep the last good frame on screen instead.
-    if (FAILED(RenderOverlay(rt_, size, content))) return;
+    if (FAILED(RenderOverlay(rt_, brushes_, size, content))) return;
 
     POINT dst{p.rect.left, p.rect.top};
     POINT src{0, 0};
